@@ -1,20 +1,20 @@
-import getopt, sys, os, re
+import getopt, argparse, sys, os, re
 
-def timecodeToFrames(tcString,frameRate,dropFrame='n'):
+def timecodeToFrames(tcString,framerate,dropFrame=False):
     tcString = tcString.strip()
     tcHH, tcMM, tcSS, tcFF = int(tcString[0:2]), int(tcString[3:5]), int(tcString[6:8]), int(tcString[9:11])
-    timeBase = round(frameRate)
-    if dropFrame == 'n':
+    timeBase = round(framerate)
+    if not dropFrame:
         frameNumber = tcFF + (((tcHH * 60 + tcMM) * 60) + tcSS) * timeBase
     else:
         totalMinutes = tcHH * 60 + tcMM
-        framesDropped = round(frameRate * 2 / 30)
+        framesDropped = round(framerate * 2 / 30)
         frameNumber = (totalMinutes * 60 + tcSS) * timeBase + tcFF - (framesDropped * (totalMinutes - totalMinutes // 10))
     return frameNumber
 
-def framesToTimecode(frameNumber,frameRate,dropFrame='n'):
-    timeBase = round(frameRate)
-    if dropFrame == 'n':
+def framesToTimecode(frameNumber,framerate,dropFrame=False):
+    timeBase = round(framerate)
+    if not dropFrame:
         tcFF = int(frameNumber % timeBase)
         totalSeconds = frameNumber // timeBase
         tcHH = int(totalSeconds // 3600)
@@ -22,10 +22,10 @@ def framesToTimecode(frameNumber,frameRate,dropFrame='n'):
         tcSS = int(totalSeconds % 60)
         tcString = str(tcHH).zfill(2) + ':' + str(tcMM).zfill(2) + ':' + str(tcSS).zfill(2) + ':' + str(tcFF).zfill(2)
     else:
-        framesDropped = round(frameRate * 2 / 30)
-        framesPerHour = round(frameRate * 3600)
-        framesTenMinutes = round(frameRate * 600)
-        framesPerMinute = round(frameRate) * 60 - framesDropped
+        framesDropped = round(framerate * 2 / 30)
+        framesPerHour = round(framerate * 3600)
+        framesTenMinutes = round(framerate * 600)
+        framesPerMinute = round(framerate) * 60 - framesDropped
         d = frameNumber // framesTenMinutes
         m = frameNumber % framesTenMinutes
         if m > framesDropped:
@@ -39,30 +39,30 @@ def framesToTimecode(frameNumber,frameRate,dropFrame='n'):
         tcString = str(tcHH).zfill(2) + ':' + str(tcMM).zfill(2) + ':' + str(tcSS).zfill(2) + ';' + str(tcFF).zfill(2)
     return tcString
 
-def timecodeToSrtTimestamp(tcString,frameRate):
+def timecodeToSrtTimestamp(tcString,framerate):
     tcHH, tcMM, tcSS, tcFF = int(tcString[0:2]), int(tcString[3:5]), int(tcString[6:8]), int(tcString[9:11])
-    srtMS = str(int(int(tcFF)/frameRate*1000)).zfill(3)
+    srtMS = str(int(int(tcFF)/framerate*1000)).zfill(3)
     srtTimestamp = tcHH + ':' + tcMM + ':' + tcSS + ',' + srtMS
     return srtTimestamp
 
-def srtTimestampToTimecode(srtTimestamp,frameRate):
+def srtTimestampToTimecode(srtTimestamp,framerate):
     tcHH, tcMM, srtSSMS = srtTimestamp.split(':')
     tcSS, srtMS = srtSSMS.split(',')
-    tcFF = int(int(srtMS) / 1000 * frameRate)
+    tcFF = int(int(srtMS) / 1000 * framerate)
     tcString = tcHH + ':' + tcMM + ':' + tcSS + ':' + str(tcFF).zfill(2)
     return tcString
 
-def timecodeAlign(sourceTimecode,framesDiff,frameRate,dropFrame='n'):
-    targetFramesCount = timecodeToFrames(sourceTimecode,frameRate,dropFrame) + framesDiff
-    return framesToTimecode(targetFramesCount,frameRate,dropFrame)
+def timecodeAlign(sourceTimecode,framesDiff,framerate,dropFrame=False):
+    targetFramesCount = timecodeToFrames(sourceTimecode,framerate,dropFrame) + framesDiff
+    return framesToTimecode(targetFramesCount,framerate,dropFrame)
 
-def amcAlignAmc(inputSubcapLines,offsetFrames,frameRate,dropFrame='n'):
+def amcAlign(inputSubcapLines,offsetFrames,framerate,dropFrame):
     outputSubcapLines = []
     for inputLine in inputSubcapLines:
         if re.match(r'^\d\d:\d\d:\d\d[:;]\d\d\s\d\d:\d\d:\d\d[:;]\d\d',inputLine):
             sourceTimecodeIn, sourceTimecodeOut = inputLine.split()
-            timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,frameRate,dropFrame)
-            timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,frameRate,dropFrame)
+            timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,framerate,dropFrame)
+            timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,framerate,dropFrame)
             outputLine = timecodeIn + ' ' + timecodeOut + '\n'
             print(outputLine,end='')
             outputSubcapLines.append(outputLine)
@@ -72,17 +72,17 @@ def amcAlignAmc(inputSubcapLines,offsetFrames,frameRate,dropFrame='n'):
             outputSubcapLines.append(outputLine)
     return outputSubcapLines
 
-def amcConvertSrt(inputSubcapLines,srtOffsetFrames,frameRate):
+def amcToSrt(inputSubcapLines,srtOffsetFrames,framerate):
     outputSrtLines = []
     for i in range(3,len(inputSubcapLines)-2,3):
         index = int(i // 3)
         sourceTimecode = inputSubcapLines[i].strip()
         sourceTimecodeIn, sourceTimecodeOut = sourceTimecode.split()
         captionText = inputSubcapLines[i+1].strip()
-        timecodeIn = timecodeAlign(sourceTimecodeIn,srtOffsetFrames,frameRate)
-        timecodeOut = timecodeAlign(sourceTimecodeOut,srtOffsetFrames,frameRate)
-        timecodeInSrt = timecodeToSrtTimestamp(timecodeIn,frameRate)
-        timecodeOutSrt = timecodeToSrtTimestamp(timecodeOut,frameRate)
+        timecodeIn = timecodeAlign(sourceTimecodeIn,srtOffsetFrames,framerate)
+        timecodeOut = timecodeAlign(sourceTimecodeOut,srtOffsetFrames,framerate)
+        timecodeInSrt = timecodeToSrtTimestamp(timecodeIn,framerate)
+        timecodeOutSrt = timecodeToSrtTimestamp(timecodeOut,framerate)
         timecodeSrt = timecodeInSrt + ' --> ' + timecodeOutSrt
         print(f'{str(index)}\n{timecodeSrt}\n{captionText}\n')
         outputSrtLines.append(f'{str(index)}\n')
@@ -91,42 +91,54 @@ def amcConvertSrt(inputSubcapLines,srtOffsetFrames,frameRate):
         outputSrtLines.append(f'\n')
     return outputSrtLines
 
-def amcExportCsv(inputSubcapLines,offsetFrames,frameRate,dropFrame='n'):
+def amcToCsv(inputSubcapLines,offsetFrames,framerate,dropFrame):
     outputCsvLines = []
     for i in range(3,len(inputSubcapLines)-2,3):
         sourceTimecode = inputSubcapLines[i].strip()
         sourceTimecodeIn, sourceTimecodeOut = sourceTimecode.split()
         captionText = inputSubcapLines[i+1].strip()
-        timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,frameRate,dropFrame)
-        timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,frameRate,dropFrame)
+        timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,framerate,dropFrame)
+        timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,framerate,dropFrame)
         outputLine = timecodeIn + ',' + timecodeOut + ',' + '"' + captionText + '"\n'
         print(outputLine,end='')
         outputCsvLines.append(outputLine)
     return outputCsvLines
 
-def csvAlignCsv(inputCsvLines,offsetFrames,frameRate,dropFrame='n'):
+def amcSplitCsv(inputSubcapLines,offsetFrames,languageCount,languageIndex,framerate,dropFrame):
+    outputCsvLines = []
+    for i in range(3,len(inputSubcapLines)-2, 2 + languageCount):
+        sourceTimecodeIn, sourceTimecodeOut = inputSubcapLines[i].strip().split()
+        captionText = inputSubcapLines[i + 1 + languageIndex].strip()
+        timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,framerate,dropFrame)
+        timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,framerate,dropFrame)
+        outputLine = timecodeIn + ',' + timecodeOut + ',' + '"' + captionText + '"\n'
+        print(outputLine,end='')
+        outputCsvLines.append(outputLine)
+    return outputCsvLines
+
+def csvAlign(inputCsvLines,offsetFrames,framerate,dropFrame):
     outputCsvLines = []
     for i in range(0,len(inputCsvLines)):
         inputLine = inputCsvLines[i].strip()
         sourceTimecodeIn, sourceTimecodeOut, captionText = inputLine.split(',',2)
         captionText = captionText.strip('"')
-        timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,frameRate,dropFrame)
-        timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,frameRate,dropFrame)
+        timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,framerate,dropFrame)
+        timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,framerate,dropFrame)
         outputLine = timecodeIn + ',' + timecodeOut + ',' + '"' + captionText + '"\n'
         print(outputLine,end='')
         outputCsvLines.append(outputLine)
     return outputCsvLines
 
-def csvConvertSrt(inputCsvLines,srtOffsetFrames,frameRate):
+def csvToSrt(inputCsvLines,srtOffsetFrames,framerate):
     outputSrtLines = []
     for i in range(0,len(inputCsvLines)):
         index = i + 1
         inputLine = inputCsvLines[i].strip()
         sourceTimecodeIn, sourceTimecodeOut, captionText = inputLine.split(',',2)
-        timecodeIn = timecodeAlign(sourceTimecodeIn,srtOffsetFrames,frameRate)
-        timecodeOut = timecodeAlign(sourceTimecodeOut,srtOffsetFrames,frameRate)
-        timecodeInSrt = timecodeToSrtTimestamp(timecodeIn,frameRate)
-        timecodeOutSrt = timecodeToSrtTimestamp(timecodeOut,frameRate)
+        timecodeIn = timecodeAlign(sourceTimecodeIn,srtOffsetFrames,framerate)
+        timecodeOut = timecodeAlign(sourceTimecodeOut,srtOffsetFrames,framerate)
+        timecodeInSrt = timecodeToSrtTimestamp(timecodeIn,framerate)
+        timecodeOutSrt = timecodeToSrtTimestamp(timecodeOut,framerate)
         timecodeSrt = timecodeInSrt + ' --> ' + timecodeOutSrt
         captionText = captionText.strip('"')
         print(f'{str(index)}\n{timecodeSrt}\n{captionText}\n')
@@ -136,7 +148,7 @@ def csvConvertSrt(inputCsvLines,srtOffsetFrames,frameRate):
         outputSrtLines.append(f'\n')
     return outputSrtLines
 
-def csvExportAmc(inputCsvLines,offsetFrames,frameRate,dropFrame):
+def csvToAmc(inputCsvLines,offsetFrames,framerate,dropFrame):
     outputSubcapLines = []
     amcStart = '@ This file written with the Avid Caption plugin, version 1\n\n<begin subtitles>\n'
     amcEnd = '<end subtitles>\n'
@@ -145,8 +157,8 @@ def csvExportAmc(inputCsvLines,offsetFrames,frameRate,dropFrame):
     for i in range(0,len(inputCsvLines)):
         inputLine = inputCsvLines[i].strip()
         sourceTimecodeIn, sourceTimecodeOut, captionText = inputLine.split(',',2)
-        timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,frameRate,dropFrame)
-        timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,frameRate,dropFrame)
+        timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,framerate,dropFrame)
+        timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,framerate,dropFrame)
         captionText = captionText.strip('"')
         tcString = timecodeIn + ' ' + timecodeOut
         print(f'{tcString}\n{captionText}\n')
@@ -157,7 +169,7 @@ def csvExportAmc(inputCsvLines,offsetFrames,frameRate,dropFrame):
     outputSubcapLines.append(amcEnd)
     return outputSubcapLines
 
-def srtConvertAmc(inputSrtLines,offsetFrames,frameRate):
+def srtToAmc(inputSrtLines,offsetFrames,framerate):
     outputSubcapLines = []
     amcStart = '@ This file written with the Avid Caption plugin, version 1\n\n<begin subtitles>\n'
     amcEnd = '<end subtitles>\n'
@@ -166,10 +178,10 @@ def srtConvertAmc(inputSrtLines,offsetFrames,frameRate):
     for i in range(0, len(inputSrtLines), 4):
         srtTimestampIn, srtTimestampOut = inputSrtLines[i + 1].strip().split(' --> ')
         captionText = inputSrtLines[i + 2].strip()
-        sourceTimecodeIn = srtTimestampToTimecode(srtTimestampIn,frameRate)
-        sourceTimecodeOut = srtTimestampToTimecode(srtTimestampOut,frameRate)
-        timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,frameRate)
-        timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,frameRate)
+        sourceTimecodeIn = srtTimestampToTimecode(srtTimestampIn,framerate)
+        sourceTimecodeOut = srtTimestampToTimecode(srtTimestampOut,framerate)
+        timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,framerate)
+        timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,framerate)
         tcString = timecodeIn + ' ' + timecodeOut
         print(f'{tcString}\n{captionText}\n')
         outputSubcapLines.append(f'{tcString}\n')
@@ -179,432 +191,315 @@ def srtConvertAmc(inputSrtLines,offsetFrames,frameRate):
     outputSubcapLines.append(amcEnd)
     return outputSubcapLines
 
-def srtDumpCsv(inputSrtLines,offsetFrames,frameRate):
+def srtToCsv(inputSrtLines,offsetFrames,framerate):
     outputCsvLines = []
-    i = 0
-    n = len(inputSrtLines)
-    while i < n:
-        try:
-            currentIndex = int(inputSrtLines[i].strip())
-        except:
-            i += 1
-            continue
-        try:
-            j = inputSrtLines.index(f'{currentIndex + 1}\n')
-        except ValueError as vErr:
-            j = n
-        srtTimestampIn, srtTimestampOut = inputSrtLines[i + 1].strip().split(' --> ')
-        sourceTimecodeIn = srtTimestampToTimecode(srtTimestampIn,frameRate)
-        sourceTimecodeOut = srtTimestampToTimecode(srtTimestampOut,frameRate)
-        timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,frameRate)
-        timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,frameRate)
-        captionBlock = ''
-        for k in range(i + 2, j):
-            if k == j - 2:
-                captionText = inputSrtLines[k].strip()
-            else:
-                captionText = inputSrtLines[k]
-            if captionText.strip() == '':
-                pass
-            else:
-                captionBlock += captionText            
-        if captionBlock == '':
-            i = j
+    ll = len(inputSrtLines)
+    timecodeIndicies = [i for i in range(ll) \
+        if re.match(r'^\d\d.\d\d.\d\d.\d\d\d --> \d\d.\d\d.\d\d.\d\d\d\n', inputSrtLines[i])]
+    il = len(timecodeIndicies)
+    for i in range(il):
+        index = timecodeIndicies[i]
+        if i == il - 1:
+            segmentLen = ll - timecodeIndicies[i] + 1
         else:
-            outputLine = timecodeIn + ',' + timecodeOut + ',' + '"' + captionBlock + '"\n'
-            print(outputLine,end='')
-            outputCsvLines.append(outputLine)
-            i = j
+            segmentLen = timecodeIndicies[i+1] - timecodeIndicies[i]
+        srtTimestampIn, srtTimestampOut = inputSrtLines[index].strip().split(' --> ')
+        sourceTimecodeIn = srtTimestampToTimecode(srtTimestampIn,framerate)
+        sourceTimecodeOut = srtTimestampToTimecode(srtTimestampOut,framerate)
+        timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,framerate)
+        timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,framerate)
+        captionBlock = ''
+        for j in range(1,segmentLen - 2):
+            if j == segmentLen - 2 - 1:
+                captionBlock += inputSrtLines[index+j].strip()
+            else:
+                captionBlock += inputSrtLines[index+j]
+        outputLine = timecodeIn + ',' + timecodeOut + ',' + '"' + captionBlock + '"\n'
+        print(outputLine,end='')
+        outputCsvLines.append(outputLine)
     return outputCsvLines
 
-def srtSplitCsv(inputSrtLines,offsetFrames,frameRate,languageCount,languageIndex):
+def srtSplitCsv(inputSrtLines,offsetFrames,framerate,languageCount,languageIndex):
     outputCsvLines = []
     for i in range(0, len(inputSrtLines), 3 + languageCount):
         srtTimestampIn, srtTimestampOut = inputSrtLines[i + 1].strip().split(' --> ')
         captionText = inputSrtLines[i + 2 + languageIndex].strip()
-        sourceTimecodeIn = srtTimestampToTimecode(srtTimestampIn,frameRate)
-        sourceTimecodeOut = srtTimestampToTimecode(srtTimestampOut,frameRate)
-        timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,frameRate)
-        timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,frameRate)
+        sourceTimecodeIn = srtTimestampToTimecode(srtTimestampIn,framerate)
+        sourceTimecodeOut = srtTimestampToTimecode(srtTimestampOut,framerate)
+        timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,framerate)
+        timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,framerate)
+        outputLine = timecodeIn + ',' + timecodeOut + ',' + '"' + captionText + '"\n'
+        print(outputLine,end='')
+        outputCsvLines.append(outputLine)
+    return outputCsvLines
+
+def prToCsv(inputTxtLines,offsetFrames,framerate,dropFrame):
+    outputCsvLines = []
+    ll = len(inputTxtLines)
+    timecodeIndicies = [i for i in range(ll) \
+        if re.match(r'^\d\d.\d\d.\d\d.\d\d - \d\d.\d\d.\d\d.\d\d\n', inputTxtLines[i])]
+    il = len(timecodeIndicies)
+    for i in range(il):
+        index = timecodeIndicies[i]
+        if i == il - 1:
+            segmentLen = ll - timecodeIndicies[i] + 1
+        else:
+            segmentLen = timecodeIndicies[i+1] - timecodeIndicies[i]
+        sourceTimecodeIn, sourceTimecodeOut = inputTxtLines[index].strip().split(' - ')
+        timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,framerate,dropFrame)
+        timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,framerate,dropFrame)
+        captionBlock = ''
+        for j in range(1,segmentLen - 1):
+            if j == segmentLen - 1 - 1:
+                captionBlock += inputTxtLines[index+j].strip()
+            else:
+                captionBlock += inputTxtLines[index+j]
+        outputLine = timecodeIn + ',' + timecodeOut + ',' + '"' + captionBlock + '"\n'
+        print(outputLine,end='')
+        outputCsvLines.append(outputLine)
+    return outputCsvLines
+
+def prSplitCsv(inputTxtLines,offsetFrames,languageCount,languageIndex,framerate,dropFrame):
+    outputCsvLines = []
+    for i in range(0,len(inputTxtLines), 2 + languageCount):
+        sourceTimecodeIn, sourceTimecodeOut = inputTxtLines[i].strip().split(' - ')
+        captionText = inputTxtLines[i + 1 + languageIndex].strip()
+        timecodeIn = timecodeAlign(sourceTimecodeIn,offsetFrames,framerate,dropFrame)
+        timecodeOut = timecodeAlign(sourceTimecodeOut,offsetFrames,framerate,dropFrame)
         outputLine = timecodeIn + ',' + timecodeOut + ',' + '"' + captionText + '"\n'
         print(outputLine,end='')
         outputCsvLines.append(outputLine)
     return outputCsvLines
 
 if __name__ == '__main__':
-    argvList = sys.argv[1:]
-    optList = 'haces:D:i:o:'
-    loptList = ['help', 'align', 'convert', 'export', 'split=', 'decoder=', 'input=', 'output=']
+    parser = argparse.ArgumentParser()
+    parser.add_argument('input_file')
+    parser.add_argument('output_file', nargs = '?', default = None)
+    parser.add_argument('-if', '--inputformat', choices=['avid', 'csv', 'pr', 'srt'])
+    parser.add_argument('-of', '--outputformat', choices=['avid', 'csv', 'pr', 'srt'])
+    parser.add_argument('-s', '--splitsingle', type = int)
+    parser.add_argument('-m', '--splitmulti', type = int)
+    parser.add_argument('-r', '--framerate', type = float, default = 25)
+    parser.add_argument('-f', '--fromtimecode', default = '00:00:00:00')
+    parser.add_argument('-t', '--totimecode', default = '00:00:00:00')
+    parser.add_argument('-df', '--dropframe', action = 'store_const', const=True)
+    parser.add_argument('-D', '--decoder', default = 'utf-8-sig')
+    args = parser.parse_args()
+
+    if args.outputformat == None and args.output_file == None:
+        print('Please specify either an output file name or the output file format.')
+        sys.exit()
+
     operationMode = []
     outputFileSet = 0
     explicitMode = 1
-    decoder = 'utf-8-sig'
+    decoder = args.decoder
+    inputFileType = ''
     splitCount = 1
     sofString = '----------------Start of File----------------'
     eofString = '----------------End of File----------------'
-    helpMsg = ('Usage: amc_subcap.py [-a|--align] [-c|--convert] [-e|--export] [-s|--split <split_count>] [-D|--decoder <decoder>] [-i|--input <inputfile>] [-o|--output <outputfile>]\n\n'
-               + 'For Avid Media Composer Subcap files:\n'
-               + '\t-a or --align options align the timecode from source to target and writes to a new Subcap file\n'
-               + '\t-c or --convert options convert the Subcap file to an SRT file with starting time aligned to 00:00:00,000\n'
-               + '\t-e or --export options export the Subcap file to a csv file for easy process\n\n'
-               + 'For SRT files:\n'
-               + '\t-a, --align, -c or --convert options align the timecode to target and writes to a new Subcap file\n'
-               + '\t-s or --split options seperate the output file into split_count number of languages\n'
-               + '\t-e or --export options convert the SRT file to a csv file with timecode aligned to target and formated as HH:MM:SS:FF\n'
-               + '\tNote that for SRT files, source timecode is always 00:00:00,000\n\n'
-               + 'For Comma Seperated Values(CSV) files:\n'
-               + '\t-a or --align options align the timecode from source to target and writes to a new CSV file\n'
-               + '\t-c or --convert options convert the Subcap file to an SRT file with starting time aligned to 00:00:00,000\n'
-               + '\t-e or --export options export the CSV file to an Avid Media Composer Subcap file\n\n'
-               + 'If output file is provided, operation mode will be inferred from the output file extension\n'
-               + 'If any operation mode is set, output file extension will be disregarded\n\n'
-               + 'Default decoder is UTF-8-SIG')
-    
-    if len(argvList) == 0:
-        print(helpMsg)
-        sys.exit(0)
-    
-    try:
-        argv, values = getopt.getopt(argvList, optList, loptList)
-    except getopt.error as err:
-        print(str(err))
-        print(helpMsg)
-        sys.exit(2)
-        
-    for currentArgv, currentValue in argv:
-        if currentArgv in ('-h', '--help'):
-            print(helpMsg)
-            sys.exit(0)
-        elif currentArgv in ('-a', '--align'):
-            operationMode.append('align')
-        elif currentArgv in ('-c', '--convert'):
-            operationMode.append('convert')
-        elif currentArgv in ('-e', '--export'):
-            operationMode.append('export')
-        elif currentArgv in ('-s', '--split'):
-            operationMode.append('split')
-            splitCount = int(currentValue)
-        elif currentArgv in ('-D', '--decoder'):
-            decoder = currentValue
-        elif currentArgv in ('-i', '--input'):
-            inputFile = currentValue
-            try:
-                inputBaseDirPair = os.path.splitext(inputFile)
-            except os.error as err:
-                print(str(err))
-                sys.exit(2)
-        elif currentArgv in ('-o', '--output'):
-            outputFile = currentValue
-            try:
-                outputBaseDirPair = os.path.splitext(outputFile)
-            except os.error as err:
-                print(str(err))
-                sys.exit(2)
-            outputFileSet = 1
 
-    if len(operationMode) == 0:
-        explicitMode = 0
-        if outputFileSet == 0:
-            print(f'Please provide at least one operation mode or an output file name')
-            print(helpMsg)
+    originTC = args.fromtimecode
+    targetTC = args.totimecode
+    framerate = args.framerate
+    if args.dropframe == None:
+        if framerate in [29.97, 59.94]:
+            while True:
+                dropFrameInput = input('Use drop-frame timecode (y/n, default n)): \n').strip().lower() or 'n'
+                if dropFrameInput == 'y':
+                    dropFrame = True
+                    break
+                elif dropFrameInput == 'n':
+                    dropFrame = False
+                    break
+        else:
+            dropFrame = False
+    else:
+        dropFrame = args.dropframe
+
+    offsetFrames = timecodeToFrames(targetTC,framerate,dropFrame) - timecodeToFrames(originTC,framerate,dropFrame)
+    srtOffsetFrames = 0 - timecodeToFrames(originTC,framerate,dropFrame)
+
+    inputFile = args.input_file
+    try:
+        inputBaseDirPair = os.path.splitext(inputFile)
+    except os.error as err:
+        print(str(err))
+        sys.exit(2)
+    try:
+        o = open(inputFile, 'r', encoding = args.decoder)
+    except FileNotFoundError:
+        print('Input file not found!')
+        sys.exit(2)
+    else:
+        with o as readFile:
+            inputLines = readFile.readlines()
+
+    if inputBaseDirPair[1] == '.txt':
+        if args.inputformat == None:
+            print('Please define the type of the input txt file with [-if|--inputformat] argument\n',
+                'Supported types are avid, csv, pr and srt')
+            sys.exit()
+        else:
+            inputFileType = args.inputformat
+    elif inputBaseDirPair[1] == '.csv':
+        inputFileType = 'csv'
+    elif inputBaseDirPair[1] == '.srt':
+        inputFileType = 'srt'
+    else:
+        print('Input file format not supported\n Supported formats are csv, srt and txt')
+        sys.exit()
+
+#Define output file name
+    if not args.output_file == None:
+        try:
+            outputBaseDirPair = os.path.splitext(args.output_file)
+        except os.error as err:
+            print(str(err))
             sys.exit(2)
+        if originTC == targetTC:
+            outputBaseName = outputBaseDirPair[0]
         else:
-            if inputBaseDirPair[1] == '.txt':
-                if outputBaseDirPair[1] == '.txt':
-                    operationMode.append('align')
-                elif outputBaseDirPair[1] == '.srt':
-                    operationMode.append('convert')
-                elif outputBaseDirPair[1] == '.csv':
-                    operationMode.append('export')
-                else:
-                    print(f'Output file extension not supported!')
-                    sys.exit(0)
-            elif inputBaseDirPair[1] == '.srt':
-                if outputBaseDirPair[1] == '.txt':
-                    operationMode.append('convert')
-                elif outputBaseDirPair[1] == '.srt':
-                    print(f'Operation mode not supported!')
-                    sys.exit(0)
-                elif outputBaseDirPair[1] == '.csv':
-                    operationMode.append('export')
-                else:
-                    print(f'Output file extension not supported!')
-                    sys.exit(0)
-            elif inputBaseDirPair[1] == '.csv':
-                if outputBaseDirPair[1] == '.txt':
-                    operationMode.append('export')
-                elif outputBaseDirPair[1] == '.srt':
-                    operationMode.append('convert')
-                elif outputBaseDirPair[1] == '.csv':
-                    operationMode.append('align')
-                else:
-                    print(f'Output file extension not supported!')
-                    sys.exit(0)
-            else:
-                print('Input file format not supported!')
-                sys.exit(0)
-    elif len(operationMode) == 1:
-        if outputFileSet == 0:
-            pass
-        else:
-            print(f'Operation mode explicitly set, output file extension will not be respected.')
-    else: 
-        if outputFileSet == 0:
-            pass
-        else:
-            print(f'More than one operation mode set, output file extention will not be respected.')
-    
-    originTC = input('Please enter origin timecode (00:00:00:00): \n').strip() or '00:00:00:00'
-    targetTC = input(f'Please enter target timecode ({originTC}): \n').strip() or originTC
-    frameRateStr = input('Please enter project frame rate (25): \n').strip() or '25'
-    if frameRateStr in ['29.97', '59.94']:
-        while True:
-            dropFrameInput = input('Use drop-frame timecode (y/n, default n)): \n').strip().lower() or 'n'
-            if dropFrameInput in ['y', 'n']:
-                dropFrame = dropFrameInput
-                break
+            outputBaseName = (outputBaseNamePair[0] + '_alignedTo_' + targetTC[0:2] + '-' + targetTC[3:5]
+                            + '-' + targetTC[6:8] + '-' + targetTC[9:11] + '_'
+                            + str(framerate) + 'FPS')
     else:
-        dropFrame = 'n'
-    frameRate = float(frameRateStr)
-    offsetFrames = timecodeToFrames(targetTC,frameRate,dropFrame) - timecodeToFrames(originTC,frameRate,dropFrame)
-    srtOffsetFrames = 0 - timecodeToFrames(originTC,frameRate,dropFrame)
-    if explicitMode == 1:
-        if inputBaseDirPair[1] == '.txt':
-            with open(inputFile, 'r', encoding=decoder) as inputSubcap:
-                inputSubcapLines = inputSubcap.readlines()
-            if re.match(r'.*_alignedTo_\d\d-\d\d-\d\d-\d\d_\d+FPS', inputBaseDirPair[0]):
-                outputBaseNamePair = re.split(r'_alignedTo_', inputBaseDirPair[0], 1)
-            else:
-                outputBaseNamePair = inputBaseDirPair
-            for mode in operationMode:
-                if mode == 'align':
-                    if outputFileSet == 0:
-                        outputFile = (outputBaseNamePair[0] + '_alignedTo_' + targetTC[0:2] + '-' + targetTC[3:5]
-                                    + '-' + targetTC[6:8] + '-' + targetTC[9:11] + '_'
-                                    + str(frameRate) + 'FPS' + inputBaseDirPair[1])
-                    else:
-                        outputFile = (outputBaseDirPair[0] + inputBaseDirPair[1])
-                    print(f'\n\n\nWriting Avid Media Composer Subcap to {outputFile}\n\n{sofString}')
-                    outputSubcapLines = amcAlignAmc(inputSubcapLines,offsetFrames,frameRate,dropFrame)
-                    with open(outputFile, 'w', encoding=decoder) as outputSubcap:
-                        outputSubcap.writelines(outputSubcapLines)
-                    print(eofString)
-                elif mode == 'export':
-                    if outputFileSet == 0:
-                        outputFile = (outputBaseNamePair[0] + '_alignedTo_' + targetTC[0:2] + '-' + targetTC[3:5]
-                                    + '-' + targetTC[6:8] + '-' + targetTC[9:11] + '_'
-                                    + str(frameRate) + 'FPS' + '.csv')
-                    else:
-                        outputFile = (outputBaseDirPair[0] + '.csv')
-                    print(f'\n\n\nWriting Avid Media Composer Subcap as CSV to {outputFile}\n\n{sofString}')
-                    outputCsvLines = amcExportCsv(inputSubcapLines,offsetFrames,frameRate,dropFrame)
-                    with open(outputFile, 'w', encoding=decoder) as outputCsv:
-                        outputCsv.writelines(outputCsvLines)
-                    print(eofString)
-                elif mode == 'convert':
-                    if outputFileSet == 0:
-                        outputFile = (outputBaseNamePair[0] + '_alignedTo_' + targetTC[0:2] + '-' + targetTC[3:5]
-                                    + '-' + targetTC[6:8] + '-' + targetTC[9:11] + '_'
-                                    + str(frameRate) + 'FPS' + '.srt')
-                    else:
-                        outputFile = (outputBaseDirPair[0] + '.srt')
-                    print(f'\n\n\nConverting from Avid Media Composer Subcap to SRT: {outputFile}\n\n{sofString}')
-                    outputSrtLines = amcConvertSrt(inputSubcapLines,srtOffsetFrames,frameRate)
-                    with open(outputFile, 'w', encoding=decoder) as outputSrt:
-                        outputSrt.writelines(outputSrtLines)
-                    print(eofString)
-        elif inputBaseDirPair[1] == '.srt':
-            with open(inputFile, 'r', encoding=decoder) as inputSrt:
-                inputSrtLines = inputSrt.readlines()
-            if re.match(r'.*_alignedTo_\d\d-\d\d-\d\d-\d\d_\d+FPS', inputBaseDirPair[0]):
-                outputBaseNamePair = re.split(r'_alignedTo_', inputBaseDirPair[0], 1)
-            else:
-                outputBaseNamePair = inputBaseDirPair
-            for mode in operationMode:
-                if mode in ('convert', 'align'):
-                    if outputFileSet == 0:
-                        outputFile = (outputBaseNamePair[0] + '_alignedTo_' + targetTC[0:2] + '-' + targetTC[3:5]
-                                    + '-' + targetTC[6:8] + '-' + targetTC[9:11] + '_'
-                                    + str(frameRate) + 'FPS' + '.txt')
-                    else:
-                        outputFile = (outputBaseDirPair[0] + '.txt')
-                    print(f'\n\n\nConverting from SRT to Avid Media Composer Subcap: {outputFile}\n\n{sofString}')
-                    outputSubcapLines = srtConvertAmc(inputSrtLines,offsetFrames,frameRate)
-                    with open(outputFile, 'w', encoding=decoder) as outputSubcap:
-                        outputSubcap.writelines(outputSubcapLines)
-                    print(eofString)
-                elif mode == 'export':
-                    if outputFileSet == 0:
-                        outputFile = (outputBaseNamePair[0] + '_alignedTo_' + targetTC[0:2] + '-' + targetTC[3:5]
-                                    + '-' + targetTC[6:8] + '-' + targetTC[9:11] + '_'
-                                    + str(frameRate) + 'FPS' + '.csv')
-                    else:
-                        outputFile = (outputBaseDirPair[0] + '.csv')
-                    print(f'\n\n\nWriting SRT Subtitles as CSV to {outputFile}\n\n{sofString}')
-                    outputCsvLines = srtDumpCsv(inputSrtLines,offsetFrames,frameRate)
-                    with open(outputFile, 'w', encoding=decoder) as outputCsv:
-                        outputCsv.writelines(outputCsvLines)
-                    print(eofString)
-                elif mode == 'split':
-                    if splitCount == 0:
-                        print('Split count set to 0, switching to Export operation')
-                        if outputFileSet == 0:
-                            outputFile = (outputBaseNamePair[0] + '_alignedTo_' + targetTC[0:2] + '-' + targetTC[3:5]
-                                        + '-' + targetTC[6:8] + '-' + targetTC[9:11] + '_'
-                                        + str(frameRate) + 'FPS' + '.csv')
-                        else:
-                            outputFile = (outputBaseDirPair[0] + '.csv')
-                        print(f'\n\n\nWriting SRT Subtitles as CSV to {outputFile}\n\n{sofString}')
-                        outputCsvLines = srtDumpCsv(inputSrtLines,offsetFrames,frameRate)
-                        with open(outputFile, 'w', encoding=decoder) as outputCsv:
-                            outputCsv.writelines(outputCsvLines)
-                        print(eofString)
-                    else:
-                        for l in range(splitCount):
-                            if outputFileSet == 0:
-                                outputFile = (outputBaseNamePair[0] + 'L' + str(l+1) + '_alignedTo_'
-                                            + targetTC[0:2] + '-' + targetTC[3:5] + '-' + targetTC[6:8] + '-' + targetTC[9:11]
-                                            + '_' + str(frameRate) + 'FPS' + '.csv')
-                            else:
-                                outputFile = (outputBaseDirPair[0] + 'L' + str(l+1) + '.csv')
-                            print(f'\n\n\nWriting L{l + 1} of SRT Subtitles as CSV to {outputFile}\n\n{sofString}')
-                            outputCsvLines = srtSplitCsv(inputSrtLines,offsetFrames,frameRate,splitCount,l)
-                            with open(outputFile, 'w', encoding=decoder) as outputCsv:
-                                outputCsv.writelines(outputCsvLines)
-                            print(eofString)
-        elif inputBaseDirPair[1] == '.csv':
-            with open(inputFile, 'r', encoding=decoder) as inputCsv:
-                inputCsvLines = inputCsv.readlines()
-            if re.match(r'.*_alignedTo_\d\d-\d\d-\d\d-\d\d_\d+FPS', inputBaseDirPair[0]):
-                outputBaseNamePair = re.split(r'_alignedTo_', inputBaseDirPair[0], 1)
-            else:
-                outputBaseNamePair = inputBaseDirPair
-            for mode in operationMode:
-                if mode == 'align':
-                    if outputFileSet == 0:
-                        outputFile = (outputBaseNamePair[0] + '_alignedTo_' + targetTC[0:2] + '-' + targetTC[3:5]
-                                    + '-' + targetTC[6:8] + '-' + targetTC[9:11] + '_'
-                                    + str(frameRate) + 'FPS' + inputBaseDirPair[1])
-                    else:
-                        outputFile = (outputBaseDirPair[0] + inputBaseDirPair[1])
-                    print(f'\n\n\nWriting aligned CSV to: {outputFile}\n\n{sofString}')
-                    outputCsvLines = csvAlignCsv(inputCsvLines,offsetFrames,frameRate,dropFrame)
-                    with open(outputFile, 'w', encoding=decoder) as outputCsv:
-                        outputCsv.writelines(outputCsvLines)
-                    print(eofString)
-                elif mode == 'convert':
-                    if outputFileSet == 0:
-                        outputFile = (outputBaseNamePair[0] + '_alignedTo_' + targetTC[0:2] + '-' + targetTC[3:5]
-                                    + '-' + targetTC[6:8] + '-' + targetTC[9:11] + '_'
-                                    + str(frameRate) + 'FPS' + '.srt')
-                    else:
-                        outputFile = (outputBaseDirPair[0] + '.srt')
-                    print(f'\n\n\nConverting from CSV to SRT: {outputFile}\n\n{sofString}')
-                    outputSrtLines = csvConvertSrt(inputCsvLines,srtOffsetFrames,frameRate)
-                    with open(outputFile, 'w', encoding=decoder) as outputSrt:
-                        outputSrt.writelines(outputSrtLines)
-                    print(eofString)
-                elif mode == 'export':
-                    if outputFileSet == 0:
-                        outputFile = (outputBaseNamePair[0] + '_alignedTo_' + targetTC[0:2] + '-' + targetTC[3:5]
-                                    + '-' + targetTC[6:8] + '-' + targetTC[9:11] + '_'
-                                    + str(frameRate) + 'FPS' + '.txt')
-                    else:
-                        outputFile = (outputBaseDirPair[0] + '.txt')
-                    print(f'\n\n\nConverting from CSV to Avid Media Composer Subcap: {outputFile}\n\n{sofString}')
-                    outputSubcapLines = csvExportAmc(inputCsvLines,offsetFrames,frameRate,dropFrame)
-                    with open(outputFile, 'w', encoding=decoder) as outputSubcap:
-                        outputSubcap.writelines(outputSubcapLines)
-                    print(eofString)
+        if originTC == targetTC:
+            outputBaseName = inputBaseDirPair[0]
         else:
-            print('Input file format not supported!')
-            sys.exit(0)
+            if re.match(r'.*_alignedTo_\d\d-\d\d-\d\d-\d\d_', inputBaseDirPair[0]):
+                outputBaseName = (re.split(r'_alignedTo_', inputBaseDirPair[0], 1) + '_alignedTo_'
+                                + targetTC[0:2] + '-' + targetTC[3:5] + '-' + targetTC[6:8] + '-'
+                                + targetTC[9:11] + '_' + str(framerate) + 'FPS')
+            else:
+                outputBaseName = (inputBaseDirPair[0] + '_alignedTo_' + targetTC[0:2] + '-' + targetTC[3:5]
+                                + '-' + targetTC[6:8] + '-' + targetTC[9:11] + '_'
+                                + str(framerate) + 'FPS')
+
+#Define output file extention
+    if (not args.outputformat == None):
+        outputFileType = args.outputformat
     else:
-        if inputBaseDirPair[1] == '.txt':
-            with open(inputFile, 'r', encoding=decoder) as inputSubcap:
-                inputSubcapLines = inputSubcap.readlines()
-            for mode in operationMode:
-                if mode == 'align':
-                    outputFile = (outputBaseDirPair[0] + inputBaseDirPair[1])
-                    print(f'\n\n\nWriting Avid Media Composer Subcap to {outputFile}\n\n{sofString}')
-                    outputSubcapLines = amcAlignAmc(inputSubcapLines,offsetFrames,frameRate,dropFrame)
-                    with open(outputFile, 'w', encoding=decoder) as outputSubcap:
-                        outputSubcap.writelines(outputSubcapLines)
-                    print(eofString)
-                elif mode == 'export':
-                    outputFile = (outputBaseDirPair[0] + '.csv')
-                    print(f'\n\n\nWriting Avid Media Composer Subcap as CSV to {outputFile}\n\n{sofString}')
-                    outputCsvLines = amcExportCsv(inputSubcapLines,offsetFrames,frameRate,dropFrame)
-                    with open(outputFile, 'w', encoding=decoder) as outputCsv:
-                        outputCsv.writelines(outputCsvLines)
-                    print(eofString)
-                elif mode == 'convert':
-                    outputFile = (outputBaseDirPair[0] + '.srt')
-                    print(f'\n\n\nConverting from Avid Media Composer Subcap to SRT: {outputFile}\n\n{sofString}')
-                    outputSrtLines = amcConvertSrt(inputSubcapLines,srtOffsetFrames,frameRate)
-                    with open(outputFile, 'w', encoding=decoder) as outputSrt:
-                        outputSrt.writelines(outputSrtLines)
-                    print(eofString)
-        elif inputBaseDirPair[1] == '.srt':
-            with open(inputFile, 'r', encoding=decoder) as inputSrt:
-                inputSrtLines = inputSrt.readlines()
-            for mode in operationMode:
-                if mode in ('convert', 'align'):
-                    outputFile = (outputBaseDirPair[0] + '.txt')
-                    print(f'\n\n\nConverting from SRT to Avid Media Composer Subcap: {outputFile}\n\n{sofString}')
-                    outputSubcapLines = srtConvertAmc(inputSrtLines,offsetFrames,frameRate)
-                    with open(outputFile, 'w', encoding=decoder) as outputSubcap:
-                        outputSubcap.writelines(outputSubcapLines)
-                    print(eofString)
-                elif mode == 'export':
-                    outputFile = (outputBaseDirPair[0] + '.csv')
-                    print(f'\n\n\nWriting SRT Subtitles as CSV to {outputFile}\n\n{sofString}')
-                    outputCsvLines = srtDumpCsv(inputSrtLines,offsetFrames,frameRate)
-                    with open(outputFile, 'w', encoding=decoder) as outputCsv:
-                        outputCsv.writelines(outputCsvLines)
-                    print(eofString)
-                elif mode == 'split':
-                    if splitCount == 0:
-                        print('Split count set to 0, switching to Export operation')
-                        outputFile = (outputBaseDirPair[0] + '.csv')
-                        print(f'\n\n\nWriting SRT Subtitles as CSV to {outputFile}\n\n{sofString}')
-                        outputCsvLines = srtDumpCsv(inputSrtLines,offsetFrames,frameRate)
-                        with open(outputFile, 'w', encoding=decoder) as outputCsv:
-                            outputCsv.writelines(outputCsvLines)
-                        print(eofString)
-                    else:
-                        for l in range(splitCount):
-                            outputFile = (outputBaseDirPair[0] + 'L' + str(l+1) + '.csv')
-                            print(f'\n\n\nWriting L{l + 1} of SRT Subtitles as CSV to {outputFile}\n\n{sofString}')
-                            outputCsvLines = srtSplitCsv(inputSrtLines,offsetFrames,frameRate,splitCount,l)
-                            with open(outputFile, 'w', encoding=decoder) as outputCsv:
-                                outputCsv.writelines(outputCsvLines)
-                            print(eofString)
-        elif inputBaseDirPair[1] == '.csv':
-            with open(inputFile, 'r', encoding=decoder) as inputCsv:
-                inputCsvLines = inputCsv.readlines()
-            for mode in operationMode:
-                if mode == 'align':
-                    outputFile = (outputBaseDirPair[0] + inputBaseDirPair[1])
-                    print(f'\n\n\nWriting aligned CSV to: {outputFile}\n\n{sofString}')
-                    outputCsvLines = csvAlignCsv(inputCsvLines,offsetFrames,frameRate,dropFrame)
-                    with open(outputFile, 'w', encoding=decoder) as outputCsv:
-                        outputCsv.writelines(outputCsvLines)
-                    print(eofString)
-                elif mode == 'convert':
-                    outputFile = (outputBaseDirPair[0] + '.srt')
-                    print(f'\n\n\nConverting from CSV to SRT: {outputFile}\n\n{sofString}')
-                    outputSrtLines = csvConvertSrt(inputCsvLines,srtOffsetFrames,frameRate)
-                    with open(outputFile, 'w', encoding=decoder) as outputSrt:
-                        outputSrt.writelines(outputSrtLines)
-                    print(eofString)
-                elif mode == 'export':
-                    outputFile = (outputBaseDirPair[0] + '.txt')
-                    print(f'\n\n\nConverting from CSV to Avid Media Composer Subcap: {outputFile}\n\n{sofString}')
-                    outputSubcapLines = csvExportAmc(inputCsvLines,offsetFrames,frameRate,dropFrame)
-                    with open(outputFile, 'w', encoding=decoder) as outputSubcap:
-                        outputSubcap.writelines(outputSubcapLines)
-                    print(eofString)
+        if outputBaseDirPair[1] == '.txt' or outputBaseDirPair[1] == '':
+            print('Please define the type of the output txt file with [-of|--outformat] argument\n',
+                'Supported types are avid, csv, pr and srt')
+            sys.exit()
+        elif outputBaseDirPair[1] == '.csv':
+            outputFileType = 'csv'
+        elif outputBaseDirPair[1] == '.srt':
+            outputFileType = 'srt'
         else:
-            print('Input file format not supported!')
-            sys.exit(0)
+            print("Defined output file extension not supported")
+
+    if (not args.splitsingle == None) and args.splitsingle >= 2:
+        print('WIP')
+    elif (not args.splitmulti == None) and args.splitmulti >= 2:
+        splitCount = args.splitmulti
+        if outputFileType == 'avid':
+            if inputFileType == 'avid':
+                print('WIP')
+            elif inputFileType == 'csv':
+                print('WIP')
+            elif inputFileType == 'pr':
+                print('WIP')
+            elif inputFileType == 'srt':
+                print('WIP')
+        elif outputFileType == 'csv':
+            if inputFileType == 'avid':
+                print('WIP')
+            elif inputFileType == 'csv':
+                print('WIP')
+            elif inputFileType == 'pr':
+                for l in range(splitCount):
+                    outputFile = outputBaseName + '_L' + str(l+1) + '.csv'
+                    print(f'\n\n\nWriting L{l + 1} of Pr Subtitles as CSV to {outputFile}\n\n{sofString}')
+                    outputCsvLines = prSplitCsv(inputLines,offsetFrames,splitCount,l,framerate,dropFrame)
+                    with open(outputFile, 'w', encoding=decoder) as outputCsv:
+                        outputCsv.writelines(outputCsvLines)
+                    print(eofString)
+            elif inputFileType == 'srt':
+                for l in range(splitCount):
+                    outputFile = outputBaseName + '_L' + str(l+1) + '.csv'
+                    print(f'\n\n\nWriting L{l + 1} of SRT Subtitles as CSV to {outputFile}\n\n{sofString}')
+                    outputCsvLines = srtSplitCsv(inputLines,offsetFrames,framerate,splitCount,l)
+                    with open(outputFile, 'w', encoding=decoder) as outputCsv:
+                        outputCsv.writelines(outputCsvLines)
+                    print(eofString)
+        elif outputFileType == 'srt':
+            if inputFileType == 'avid':
+                print('WIP')
+            elif inputFileType == 'csv':
+                print('WIP')
+            elif inputFileType == 'pr':
+                print('WIP')
+            elif inputFileType == 'srt':
+                print('WIP')
+    else:
+        if outputFileType == 'avid':
+            outputFile = outputBaseName + '.txt'
+            if inputFileType == 'avid':
+                print(f'\n\n\nWriting Avid Media Composer Subcap to {outputFile}\n\n{sofString}')
+                outputSubcapLines = amcAlign(inputLines,offsetFrames,framerate,dropFrame)
+                with open(outputFile, 'w', encoding=decoder) as outputSubcap:
+                    outputSubcap.writelines(outputSubcapLines)
+                print(eofString)
+            elif inputFileType == 'csv':
+                print(f'\n\n\nConverting from CSV to Avid Media Composer Subcap: {outputFile}\n\n{sofString}')
+                outputSubcapLines = csvToAmc(inputLines,offsetFrames,framerate,dropFrame)
+                with open(outputFile, 'w', encoding=decoder) as outputSubcap:
+                    outputSubcap.writelines(outputSubcapLines)
+                print(eofString)
+            elif inputFileType == 'pr':
+                print('WIP')
+            elif inputFileType == 'srt':
+                print(f'\n\n\nConverting from SRT to Avid Media Composer Subcap: {outputFile}\n\n{sofString}')
+                outputSubcapLines = srtToAmc(inputLines,offsetFrames,framerate)
+                with open(outputFile, 'w', encoding=decoder) as outputSubcap:
+                    outputSubcap.writelines(outputSubcapLines)
+                print(eofString)
+        elif outputFileType == 'csv':
+            outputFile = outputBaseName + '.csv'
+            if inputFileType == 'avid':
+                print(f'\n\n\nWriting Avid Media Composer Subcap as CSV to {outputFile}\n\n{sofString}')
+                outputCsvLines = amcToCsv(inputLines,offsetFrames,framerate,dropFrame)
+                with open(outputFile, 'w', encoding=decoder) as outputCsv:
+                    outputCsv.writelines(outputCsvLines)
+                print(eofString)
+            elif inputFileType == 'csv':
+                print(f'\n\n\nWriting aligned CSV to: {outputFile}\n\n{sofString}')
+                outputCsvLines = csvAlign(inputLines,offsetFrames,framerate,dropFrame)
+                with open(outputFile, 'w', encoding=decoder) as outputCsv:
+                    outputCsv.writelines(outputCsvLines)
+                print(eofString)
+            elif inputFileType == 'pr':
+                print(f'\n\n\nWriting Premiere Pro subtitles as CSV to: {outputFile}\n\n{sofString}')
+                outputCsvLines = prToCsv(inputLines,offsetFrames,framerate,dropFrame)
+                with open(outputFile, 'w', encoding=decoder) as outputCsv:
+                    outputCsv.writelines(outputCsvLines)
+                print(eofString)
+            elif inputFileType == 'srt':
+                print(f'\n\n\nWriting SRT Subtitles as CSV to {outputFile}\n\n{sofString}')
+                outputCsvLines = srtToCsv(inputLines,offsetFrames,framerate)
+                with open(outputFile, 'w', encoding=decoder) as outputCsv:
+                    outputCsv.writelines(outputCsvLines)
+                print(eofString)
+        elif outputFileType == 'srt':
+            ouputFile = outputBaseName + '.srt'
+            if inputFileType == 'avid':
+                print(f'\n\n\nConverting from Avid Media Composer Subcap to SRT: {outputFile}\n\n{sofString}')
+                outputSrtLines = amcToSrt(inputLines,srtOffsetFrames,framerate)
+                with open(outputFile, 'w', encoding=decoder) as outputSrt:
+                    outputSrt.writelines(outputSrtLines)
+                print(eofString)
+            elif inputFileType == 'csv':
+                print(f'\n\n\nConverting from CSV to SRT: {outputFile}\n\n{sofString}')
+                outputSrtLines = csvToSrt(inputLines,srtOffsetFrames,framerate)
+                with open(outputFile, 'w', encoding=decoder) as outputSrt:
+                    outputSrt.writelines(outputSrtLines)
+                print(eofString)
+            elif inputFileType == 'pr':
+                print('WIP')
+            elif inputFileType == 'srt':
+                print('WIP')
+        elif outputFileType == 'pr':
+            print('WIP')
