@@ -211,7 +211,7 @@ def srtToCsv(inputSrtLines,offsetFrames,framerate):
     for i in range(segmentCount):
         timecodeLocation = timecodeLines[i]
         if i == segmentCount - 1:
-            segmentLen = inputLineCount - timecodeLines[i] + 1
+            segmentLen = inputLineCount - timecodeLines[i] + 2
         else:
             segmentLen = timecodeLines[i+1] - timecodeLines[i]
         srtTimestampIn, srtTimestampOut = inputSrtLines[timecodeLocation].strip().split(' --> ')
