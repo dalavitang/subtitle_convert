@@ -196,6 +196,38 @@ def csvToAmc(inputCsvLines, offsetFrames, framerate, dropFrame):
     return outputSubcapLines
 
 
+def srtAlign(inputSrtLines, offsetFrames, framerate):
+    outputSrtLines = []
+    inputLineCount = len(inputSrtLines)
+    timecodeLines = [i for i in range(inputLineCount)
+                     if re.match(r'^\d\d.\d\d.\d\d.\d\d\d --> \d\d.\d\d.\d\d.\d\d\d\n', inputSrtLines[i])]
+    segmentCount = len(timecodeLines)
+    for i in range(segmentCount):
+        index = i + 1
+        timecodeLocation = timecodeLines[i]
+        if i == segmentCount - 1:
+            segmentLen = inputLineCount - timecodeLines[i] + 2
+        else:
+            segmentLen = timecodeLines[i + 1] - timecodeLines[i]
+        srtTimestampIn, srtTimestampOut = inputSrtLines[timecodeLocation].strip().split(' --> ')
+        sourceTimecodeIn = srtTimestampToTimecode(srtTimestampIn, framerate)
+        sourceTimecodeOut = srtTimestampToTimecode(srtTimestampOut, framerate)
+        timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate)
+        timecodeOut = timecodeAlign(sourceTimecodeOut, offsetFrames, framerate)
+        captionBlock = ''
+        for j in range(1, segmentLen - 2):
+            captionBlock += inputSrtLines[timecodeLocation + j].strip()
+        timestampInSrt = timecodeToSrtTimestamp(timecodeIn, framerate)
+        timestampOutSrt = timecodeToSrtTimestamp(timecodeOut, framerate)
+        timestampSrt = timestampInSrt + ' --> ' + timestampOutSrt
+        print(f'{str(index)}\n{timestampSrt}\n{captionBlock}\n')
+        outputSrtLines.append(f'{str(index)}\n')
+        outputSrtLines.append(f'{timestampSrt}\n')
+        outputSrtLines.append(f'{captionBlock}\n')
+        outputSrtLines.append('\n')
+    return outputSrtLines
+
+
 def srtToAmc(inputSrtLines, offsetFrames, framerate):
     outputSubcapLines = []
     amcStart = '@ This file written with the Avid Caption plugin, version 1\n\n<begin subtitles>\n'
@@ -570,6 +602,10 @@ if __name__ == '__main__':
                     outputSrt.writelines(outputSrtLines)
                 print(eofString)
             elif inputFileType == 'srt':
-                print('WIP')
+                print(f'\n\n\nWriting Aligned SRT to: {outputFile}\n\n{sofString}')
+                outputSrtLines = srtAlign(inputLines, offsetFrames, framerate)
+                with open(outputFile, 'w', encoding=decoder) as outputSrt:
+                    outputSrt.writelines(outputSrtLines)
+                print(eofString)
         elif outputFileType == 'pr':
             print('WIP')
