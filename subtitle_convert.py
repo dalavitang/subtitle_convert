@@ -295,6 +295,36 @@ def srtSplitCsv(inputSrtLines, offsetFrames, framerate, languageCount, languageI
     return outputCsvLines
 
 
+def srtSplitSrt(inputSrtLines, offsetFrames, framerate, languageCount, languageIndex):
+    outputSrtLines = []
+    inputLineCount = len(inputSrtLines)
+    if inputLineCount % (3 + languageCount) == (2 + languageCount):
+        inputLineCount += 1
+        inputSrtLines.append('\n')
+    elif inputLineCount % (3 + languageCount) == 1:
+        inputLineCount = inputLineCount - 1
+    for i in range(0, inputLineCount, 3 + languageCount):
+        index = i + 1
+        if offsetFrames == 0:
+            timestampSrt = inputSrtLines[i + 1].strip()
+        else:
+            srtTimestampIn, srtTimestampOut = inputSrtLines[i + 1].strip().split(' --> ')
+            sourceTimecodeIn = srtTimestampToTimecode(srtTimestampIn, framerate)
+            sourceTimecodeOut = srtTimestampToTimecode(srtTimestampOut, framerate)
+            timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate)
+            timecodeOut = timecodeAlign(sourceTimecodeOut, offsetFrames, framerate)
+            timestampInSrt = timecodeToSrtTimestamp(timecodeIn, framerate)
+            timestampOutSrt = timecodeToSrtTimestamp(timecodeOut, framerate)
+            timestampSrt = timestampInSrt + ' --> ' + timestampOutSrt
+        captionText = inputSrtLines[i + 2 + languageIndex].strip()
+        print(f'{str(index)}\n{timestampSrt}\n{captionText}\n')
+        outputSrtLines.append(f'{str(index)}\n')
+        outputSrtLines.append(f'{timestampSrt}\n')
+        outputSrtLines.append(f'{captionText}\n')
+        outputSrtLines.append('\n')
+    return outputSrtLines
+
+
 def prToCsv(inputTxtLines, offsetFrames, framerate, dropFrame):
     outputCsvLines = []
     ll = len(inputTxtLines)
@@ -531,7 +561,13 @@ if __name__ == '__main__':
             elif inputFileType == 'pr':
                 print('WIP')
             elif inputFileType == 'srt':
-                print('WIP')
+                for lang in range(splitCount):
+                    outputFile = outputBaseName + '_L' + str(lang + 1) + '.srt'
+                    print(f'\n\n\nSplitting L{lang + 1} of SRT Subtitles to {outputFile}\n\n{sofString}')
+                    outputSrtLines = srtSplitSrt(inputLines, offsetFrames, framerate, splitCount, lang)
+                    with open(outputFile, 'w', encoding=decoder) as outputSrt:
+                        outputSrt.writelines(outputSrtLines)
+                    print(eofString)
     else:
         if outputFileType == 'avid':
             outputFile = outputBaseName + '.txt'
