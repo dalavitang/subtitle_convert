@@ -304,7 +304,7 @@ def srtSplitSrt(inputSrtLines, offsetFrames, framerate, languageCount, languageI
     elif inputLineCount % (3 + languageCount) == 1:
         inputLineCount = inputLineCount - 1
     for i in range(0, inputLineCount, 3 + languageCount):
-        index = i + 1
+        index = inputSrtLines[i].strip()
         if offsetFrames == 0:
             timestampSrt = inputSrtLines[i + 1].strip()
         else:
