@@ -46,16 +46,18 @@ def framesToTimecode(frameNumber, framerate, dropFrame=False):
 
 
 def timecodeToSrtTimestamp(tcString, framerate):
+    frameDur = 1000 / framerate
     tcHH, tcMM, tcSS, tcFF = int(tcString[0:2]), int(tcString[3:5]), int(tcString[6:8]), int(tcString[9:11])
-    srtMS = str(int(int(tcFF) / framerate * 1000)).zfill(3)
+    srtMS = str(int(int(tcFF) * frameDur)).zfill(3)
     srtTimestamp = str(tcHH).zfill(2) + ':' + str(tcMM).zfill(2) + ':' + str(tcSS).zfill(2) + ',' + srtMS
     return srtTimestamp
 
 
 def srtTimestampToTimecode(srtTimestamp, framerate):
+    frameDur = 1000 / framerate
     tcHH, tcMM, srtSSMS = srtTimestamp.split(':')
     tcSS, srtMS = srtSSMS.split(',')
-    tcFF = int(int(srtMS) / 1000 * framerate)
+    tcFF = round(int(srtMS) / frameDur)
     tcString = tcHH + ':' + tcMM + ':' + tcSS + ':' + str(tcFF).zfill(2)
     return tcString
 
