@@ -3,6 +3,10 @@ import sys
 import os
 import re
 import csv
+import io
+
+CSV_QUOTE_IN = '\\'
+CSV_QUOTE_OUT = '\\'
 
 
 def timecodeToFrames(tcString, framerate, dropFrame=False):
@@ -152,6 +156,22 @@ def amcToSrt(inputSubcapLines, srtOffsetFrames, framerate):
     return outputSrtLines
 
 
+def _md_escape_field(text):
+    return text.replace("|", "\\|").replace("\n", "<br>")
+
+
+def _md_table_row(fields):
+    return "| " + " | ".join(_md_escape_field(str(f)) for f in fields) + " |\n"
+
+
+def _csv_write_row(fields, quotechar):
+    buf = io.StringIO()
+    csv.writer(
+        buf, quotechar=quotechar, quoting=csv.QUOTE_ALL, lineterminator="\n"
+    ).writerow(fields)
+    return buf.getvalue()
+
+
 def amcToCsv(inputSubcapLines, offsetFrames, framerate, dropFrame):
     outputCsvLines = []
     for i in range(3, len(inputSubcapLines) - 2, 3):
@@ -162,10 +182,28 @@ def amcToCsv(inputSubcapLines, offsetFrames, framerate, dropFrame):
         timecodeOut = timecodeAlign(
             sourceTimecodeOut, offsetFrames, framerate, dropFrame
         )
-        outputLine = timecodeIn + "," + timecodeOut + "," + '"' + captionText + '"\n'
+        outputLine = _csv_write_row(
+            [timecodeIn, timecodeOut, captionText], CSV_QUOTE_OUT
+        )
         print(outputLine, end="")
         outputCsvLines.append(outputLine)
     return outputCsvLines
+
+
+def amcToMd(inputSubcapLines, offsetFrames, framerate, dropFrame):
+    outputMdLines = []
+    for i in range(3, len(inputSubcapLines) - 2, 3):
+        sourceTimecode = inputSubcapLines[i].strip()
+        sourceTimecodeIn, sourceTimecodeOut = sourceTimecode.split()
+        captionText = inputSubcapLines[i + 1].strip()
+        timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate, dropFrame)
+        timecodeOut = timecodeAlign(
+            sourceTimecodeOut, offsetFrames, framerate, dropFrame
+        )
+        outputLine = _md_table_row([timecodeIn, timecodeOut, captionText])
+        print(outputLine, end="")
+        outputMdLines.append(outputLine)
+    return outputMdLines
 
 
 def amcSplitCsv(
@@ -179,26 +217,69 @@ def amcSplitCsv(
         timecodeOut = timecodeAlign(
             sourceTimecodeOut, offsetFrames, framerate, dropFrame
         )
-        outputLine = timecodeIn + "," + timecodeOut + "," + '"' + captionText + '"\n'
+        outputLine = _csv_write_row(
+            [timecodeIn, timecodeOut, captionText], CSV_QUOTE_OUT
+        )
         print(outputLine, end="")
         outputCsvLines.append(outputLine)
     return outputCsvLines
 
 
-def csvAlign(inputCsvLines, offsetFrames, framerate, dropFrame):
-    outputCsvLines = []
-    for i in range(0, len(inputCsvLines)):
-        inputLine = inputCsvLines[i].strip()
-        sourceTimecodeIn, sourceTimecodeOut, captionText = inputLine.split(",", 2)
-        captionText = captionText.strip('"')
+def amcSplitMd(
+    inputSubcapLines, offsetFrames, framerate, dropFrame, languageCount, languageIndex
+):
+    outputMdLines = []
+    for i in range(3, len(inputSubcapLines) - 2, 2 + languageCount):
+        sourceTimecodeIn, sourceTimecodeOut = inputSubcapLines[i].strip().split()
+        captionText = inputSubcapLines[i + 1 + languageIndex].strip()
         timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate, dropFrame)
         timecodeOut = timecodeAlign(
             sourceTimecodeOut, offsetFrames, framerate, dropFrame
         )
-        outputLine = timecodeIn + "," + timecodeOut + "," + '"' + captionText + '"\n'
+        outputLine = _md_table_row([timecodeIn, timecodeOut, captionText])
+        print(outputLine, end="")
+        outputMdLines.append(outputLine)
+    return outputMdLines
+
+
+def csvAlign(inputCsvLines, offsetFrames, framerate, dropFrame):
+    outputCsvLines = []
+    reader = csv.reader(inputCsvLines, quotechar=CSV_QUOTE_IN)
+    for row in reader:
+        if not row or len(row) < 2:
+            continue
+        sourceTimecodeIn = row[0]
+        sourceTimecodeOut = row[1]
+        timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate, dropFrame)
+        timecodeOut = timecodeAlign(
+            sourceTimecodeOut, offsetFrames, framerate, dropFrame
+        )
+        row[0] = timecodeIn
+        row[1] = timecodeOut
+        outputLine = _csv_write_row(row, CSV_QUOTE_OUT)
         print(outputLine, end="")
         outputCsvLines.append(outputLine)
     return outputCsvLines
+
+
+def csvToMd(inputCsvLines, offsetFrames, framerate, dropFrame):
+    outputMdLines = []
+    reader = csv.reader(inputCsvLines, quotechar=CSV_QUOTE_IN)
+    for row in reader:
+        if not row or len(row) < 2:
+            continue
+        sourceTimecodeIn = row[0]
+        sourceTimecodeOut = row[1]
+        timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate, dropFrame)
+        timecodeOut = timecodeAlign(
+            sourceTimecodeOut, offsetFrames, framerate, dropFrame
+        )
+        row[0] = timecodeIn
+        row[1] = timecodeOut
+        outputLine = _md_table_row(row)
+        print(outputLine, end="")
+        outputMdLines.append(outputLine)
+    return outputMdLines
 
 
 def csvToSrt(inputFile, offsetFrames, framerate, decoder):
@@ -210,7 +291,7 @@ def csvToSrt(inputFile, offsetFrames, framerate, decoder):
         print("Input file not found!")
         sys.exit(2)
     with o as inputCsvFile:
-        csvReader = csv.reader(inputCsvFile)
+        csvReader = csv.reader(inputCsvFile, quotechar=CSV_QUOTE_IN)
         for row in csvReader:
             rowFields = len(row)
             sourceTimecodeIn = row[0]
@@ -238,14 +319,17 @@ def csvToAmc(inputCsvLines, offsetFrames, framerate, dropFrame):
     amcEnd = "<end subtitles>\n"
     print(amcStart, end="")
     outputSubcapLines.append(amcStart)
-    for i in range(0, len(inputCsvLines)):
-        inputLine = inputCsvLines[i].strip()
-        sourceTimecodeIn, sourceTimecodeOut, captionText = inputLine.split(",", 2)
+    reader = csv.reader(inputCsvLines, quotechar=CSV_QUOTE_IN)
+    for row in reader:
+        if not row or len(row) < 3:
+            continue
+        sourceTimecodeIn = row[0]
+        sourceTimecodeOut = row[1]
         timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate, dropFrame)
         timecodeOut = timecodeAlign(
             sourceTimecodeOut, offsetFrames, framerate, dropFrame
         )
-        captionText = captionText.strip('"')
+        captionText = "\n".join(row[2:])
         tcString = timecodeIn + " " + timecodeOut
         print(f"{tcString}\n{captionText}\n")
         outputSubcapLines.append(f"{tcString}\n")
@@ -342,20 +426,48 @@ def srtToCsv(inputSrtLines, offsetFrames, framerate):
         sourceTimecodeOut = srtTimestampToTimecode(srtTimestampOut, framerate)
         timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate)
         timecodeOut = timecodeAlign(sourceTimecodeOut, offsetFrames, framerate)
-        captionBlock = ""
+        captionLines = []
         for j in range(1, segmentLen - 2):
-            if j == segmentLen - 2 - 1:
-                captionBlock += (
-                    "\\" + inputSrtLines[timecodeLocation + j].strip() + "\\"
-                )
-            else:
-                captionBlock += (
-                    "\\" + inputSrtLines[timecodeLocation + j].strip() + "\\,"
-                )
-        outputLine = timecodeIn + "," + timecodeOut + "," + captionBlock + "\n"
+            captionLines.append(inputSrtLines[timecodeLocation + j].strip())
+        outputLine = _csv_write_row(
+            [timecodeIn, timecodeOut] + captionLines, CSV_QUOTE_OUT
+        )
         print(outputLine, end="")
         outputCsvLines.append(outputLine)
     return outputCsvLines
+
+
+def srtToMd(inputSrtLines, offsetFrames, framerate):
+    outputMdLines = []
+    inputLineCount = len(inputSrtLines)
+    timecodeLines = [
+        i
+        for i in range(inputLineCount)
+        if re.match(
+            r"^\d\d.\d\d.\d\d.\d\d\d --> \d\d.\d\d.\d\d.\d\d\d\n", inputSrtLines[i]
+        )
+    ]
+    segmentCount = len(timecodeLines)
+    for i in range(segmentCount):
+        timecodeLocation = timecodeLines[i]
+        if i == segmentCount - 1:
+            segmentLen = inputLineCount - timecodeLines[i] + 2
+        else:
+            segmentLen = timecodeLines[i + 1] - timecodeLines[i]
+        srtTimestampIn, srtTimestampOut = (
+            inputSrtLines[timecodeLocation].strip().split(" --> ")
+        )
+        sourceTimecodeIn = srtTimestampToTimecode(srtTimestampIn, framerate)
+        sourceTimecodeOut = srtTimestampToTimecode(srtTimestampOut, framerate)
+        timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate)
+        timecodeOut = timecodeAlign(sourceTimecodeOut, offsetFrames, framerate)
+        captionLines = []
+        for j in range(1, segmentLen - 2):
+            captionLines.append(inputSrtLines[timecodeLocation + j].strip())
+        outputLine = _md_table_row([timecodeIn, timecodeOut] + captionLines)
+        print(outputLine, end="")
+        outputMdLines.append(outputLine)
+    return outputMdLines
 
 
 def srtSplitCsv(inputSrtLines, offsetFrames, framerate, languageCount, languageIndex):
@@ -367,10 +479,27 @@ def srtSplitCsv(inputSrtLines, offsetFrames, framerate, languageCount, languageI
         sourceTimecodeOut = srtTimestampToTimecode(srtTimestampOut, framerate)
         timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate)
         timecodeOut = timecodeAlign(sourceTimecodeOut, offsetFrames, framerate)
-        outputLine = timecodeIn + "," + timecodeOut + "," + '"' + captionText + '"\n'
+        outputLine = _csv_write_row(
+            [timecodeIn, timecodeOut, captionText], CSV_QUOTE_OUT
+        )
         print(outputLine, end="")
         outputCsvLines.append(outputLine)
     return outputCsvLines
+
+
+def srtSplitMd(inputSrtLines, offsetFrames, framerate, languageCount, languageIndex):
+    outputMdLines = []
+    for i in range(0, len(inputSrtLines), 3 + languageCount):
+        srtTimestampIn, srtTimestampOut = inputSrtLines[i + 1].strip().split(" --> ")
+        captionText = inputSrtLines[i + 2 + languageIndex].strip()
+        sourceTimecodeIn = srtTimestampToTimecode(srtTimestampIn, framerate)
+        sourceTimecodeOut = srtTimestampToTimecode(srtTimestampOut, framerate)
+        timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate)
+        timecodeOut = timecodeAlign(sourceTimecodeOut, offsetFrames, framerate)
+        outputLine = _md_table_row([timecodeIn, timecodeOut, captionText])
+        print(outputLine, end="")
+        outputMdLines.append(outputLine)
+    return outputMdLines
 
 
 def srtSplitSrt(inputSrtLines, offsetFrames, framerate, languageCount, languageIndex):
@@ -425,16 +554,44 @@ def prToCsv(inputTxtLines, offsetFrames, framerate, dropFrame):
         timecodeOut = timecodeAlign(
             sourceTimecodeOut, offsetFrames, framerate, dropFrame
         )
-        captionBlock = ""
+        captionLines = []
         for j in range(1, segmentLen - 1):
-            if j == segmentLen - 1 - 1:
-                captionBlock += inputTxtLines[index + j].strip()
-            else:
-                captionBlock += inputTxtLines[index + j]
-        outputLine = timecodeIn + "," + timecodeOut + "," + '"' + captionBlock + '"\n'
+            captionLines.append(inputTxtLines[index + j].strip())
+        outputLine = _csv_write_row(
+            [timecodeIn, timecodeOut] + captionLines, CSV_QUOTE_OUT
+        )
         print(outputLine, end="")
         outputCsvLines.append(outputLine)
     return outputCsvLines
+
+
+def prToMd(inputTxtLines, offsetFrames, framerate, dropFrame):
+    outputMdLines = []
+    ll = len(inputTxtLines)
+    timecodeIndicies = [
+        i
+        for i in range(ll)
+        if re.match(r"^\d\d.\d\d.\d\d.\d\d - \d\d.\d\d.\d\d.\d\d\n", inputTxtLines[i])
+    ]
+    il = len(timecodeIndicies)
+    for i in range(il):
+        index = timecodeIndicies[i]
+        if i == il - 1:
+            segmentLen = ll - timecodeIndicies[i] + 1
+        else:
+            segmentLen = timecodeIndicies[i + 1] - timecodeIndicies[i]
+        sourceTimecodeIn, sourceTimecodeOut = inputTxtLines[index].strip().split(" - ")
+        timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate, dropFrame)
+        timecodeOut = timecodeAlign(
+            sourceTimecodeOut, offsetFrames, framerate, dropFrame
+        )
+        captionLines = []
+        for j in range(1, segmentLen - 1):
+            captionLines.append(inputTxtLines[index + j].strip())
+        outputLine = _md_table_row([timecodeIn, timecodeOut] + captionLines)
+        print(outputLine, end="")
+        outputMdLines.append(outputLine)
+    return outputMdLines
 
 
 def prToSrt(inputTxtLines, offsetFrames, framerate):
@@ -486,10 +643,29 @@ def prSplitCsv(
         timecodeOut = timecodeAlign(
             sourceTimecodeOut, offsetFrames, framerate, dropFrame
         )
-        outputLine = timecodeIn + "," + timecodeOut + "," + '"' + captionText + '"\n'
+        outputLine = _csv_write_row(
+            [timecodeIn, timecodeOut, captionText], CSV_QUOTE_OUT
+        )
         print(outputLine, end="")
         outputCsvLines.append(outputLine)
     return outputCsvLines
+
+
+def prSplitMd(
+    inputTxtLines, offsetFrames, framerate, dropFrame, languageCount, languageIndex
+):
+    outputMdLines = []
+    for i in range(0, len(inputTxtLines), 2 + languageCount):
+        sourceTimecodeIn, sourceTimecodeOut = inputTxtLines[i].strip().split(" - ")
+        captionText = inputTxtLines[i + 1 + languageIndex].strip()
+        timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate, dropFrame)
+        timecodeOut = timecodeAlign(
+            sourceTimecodeOut, offsetFrames, framerate, dropFrame
+        )
+        outputLine = _md_table_row([timecodeIn, timecodeOut, captionText])
+        print(outputLine, end="")
+        outputMdLines.append(outputLine)
+    return outputMdLines
 
 
 def amcSplitSrt(
@@ -544,7 +720,7 @@ def prSplitSrt(
 
 def csvSplitCsv(inputCsvLines, offsetFrames, framerate, dropFrame, languageIndex):
     outputCsvLines = []
-    reader = csv.reader(inputCsvLines)
+    reader = csv.reader(inputCsvLines, quotechar=CSV_QUOTE_IN)
     for row in reader:
         if len(row) < 3:
             continue
@@ -561,15 +737,40 @@ def csvSplitCsv(inputCsvLines, offsetFrames, framerate, dropFrame, languageIndex
             sourceTimecodeOut, offsetFrames, framerate, dropFrame
         )
 
-        outputLine = timecodeIn + "," + timecodeOut + "," + '"' + captionText + '"\n'
+        outputLine = _csv_write_row(
+            [timecodeIn, timecodeOut, captionText], CSV_QUOTE_OUT
+        )
         print(outputLine, end="")
         outputCsvLines.append(outputLine)
     return outputCsvLines
 
 
+def csvSplitMd(inputCsvLines, offsetFrames, framerate, dropFrame, languageIndex):
+    outputMdLines = []
+    reader = csv.reader(inputCsvLines, quotechar=CSV_QUOTE_IN)
+    for row in reader:
+        if len(row) < 3:
+            continue
+        sourceTimecodeIn = row[0]
+        sourceTimecodeOut = row[1]
+        targetCol = 2 + languageIndex
+        if targetCol < len(row):
+            captionText = row[targetCol]
+        else:
+            captionText = ""
+        timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate, dropFrame)
+        timecodeOut = timecodeAlign(
+            sourceTimecodeOut, offsetFrames, framerate, dropFrame
+        )
+        outputLine = _md_table_row([timecodeIn, timecodeOut, captionText])
+        print(outputLine, end="")
+        outputMdLines.append(outputLine)
+    return outputMdLines
+
+
 def csvSplitSrt(inputCsvLines, offsetFrames, framerate, languageIndex):
     outputSrtLines = []
-    reader = csv.reader(inputCsvLines)
+    reader = csv.reader(inputCsvLines, quotechar=CSV_QUOTE_IN)
     index = 1
     for row in reader:
         if len(row) < 3:
@@ -581,14 +782,11 @@ def csvSplitSrt(inputCsvLines, offsetFrames, framerate, languageIndex):
             captionText = row[targetCol]
         else:
             captionText = ""
-
         timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate)
         timecodeOut = timecodeAlign(sourceTimecodeOut, offsetFrames, framerate)
-
         timestampInSrt = timecodeToSrtTimestamp(timecodeIn, framerate)
         timestampOutSrt = timecodeToSrtTimestamp(timecodeOut, framerate)
         timestampSrt = timestampInSrt + " --> " + timestampOutSrt
-
         print(f"{str(index)}\n{timestampSrt}\n{captionText}\n")
         outputSrtLines.append(f"{str(index)}\n")
         outputSrtLines.append(f"{timestampSrt}\n")
@@ -662,7 +860,7 @@ def amcSplitPr(
 
 def csvSplitPr(inputCsvLines, offsetFrames, framerate, dropFrame, languageIndex):
     outputPrLines = []
-    reader = csv.reader(inputCsvLines)
+    reader = csv.reader(inputCsvLines, quotechar=CSV_QUOTE_IN)
     for row in reader:
         if len(row) < 3:
             continue
@@ -673,12 +871,10 @@ def csvSplitPr(inputCsvLines, offsetFrames, framerate, dropFrame, languageIndex)
             captionText = row[targetCol]
         else:
             captionText = ""
-
         timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate, dropFrame)
         timecodeOut = timecodeAlign(
             sourceTimecodeOut, offsetFrames, framerate, dropFrame
         )
-
         outputLine = f"{timecodeIn} - {timecodeOut}\n{captionText}\n\n"
         print(outputLine, end="")
         outputPrLines.append(outputLine)
@@ -790,19 +986,17 @@ def amcToPr(inputSubcapLines, offsetFrames, framerate, dropFrame):
 
 def csvToPr(inputCsvLines, offsetFrames, framerate, dropFrame):
     outputPrLines = []
-    for i in range(0, len(inputCsvLines)):
-        inputLine = inputCsvLines[i].strip()
-        parts = inputLine.split(",", 2)
-        if len(parts) < 3:
+    reader = csv.reader(inputCsvLines, quotechar=CSV_QUOTE_IN)
+    for row in reader:
+        if not row or len(row) < 3:
             continue
-        sourceTimecodeIn, sourceTimecodeOut, captionText = parts
-        captionText = captionText.strip('"')
-
+        sourceTimecodeIn = row[0]
+        sourceTimecodeOut = row[1]
+        captionText = "\n".join(row[2:])
         timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate, dropFrame)
         timecodeOut = timecodeAlign(
             sourceTimecodeOut, offsetFrames, framerate, dropFrame
         )
-
         outputLine = f"{timecodeIn} - {timecodeOut}\n{captionText}\n\n"
         print(outputLine, end="")
         outputPrLines.append(outputLine)
@@ -886,7 +1080,7 @@ def csvSplitAmc(inputCsvLines, offsetFrames, framerate, dropFrame, languageIndex
     print(amcStart, end="")
     outputSubcapLines.append(amcStart)
 
-    reader = csv.reader(inputCsvLines)
+    reader = csv.reader(inputCsvLines, quotechar=CSV_QUOTE_IN)
     for row in reader:
         if len(row) < 3:
             continue
@@ -897,12 +1091,10 @@ def csvSplitAmc(inputCsvLines, offsetFrames, framerate, dropFrame, languageIndex
             captionText = row[targetCol]
         else:
             captionText = ""
-
         timecodeIn = timecodeAlign(sourceTimecodeIn, offsetFrames, framerate, dropFrame)
         timecodeOut = timecodeAlign(
             sourceTimecodeOut, offsetFrames, framerate, dropFrame
         )
-
         tcString = timecodeIn + " " + timecodeOut
         print(f"{tcString}\n{captionText}\n")
         outputSubcapLines.append(f"{tcString}\n")
@@ -987,7 +1179,7 @@ if __name__ == "__main__":
     parser.add_argument("input_file")
     parser.add_argument("output_file", nargs="?", default=None)
     parser.add_argument("-if", "--inputformat", choices=["avid", "csv", "pr", "srt"])
-    parser.add_argument("-of", "--outputformat", choices=["avid", "csv", "pr", "srt"])
+    parser.add_argument("-of", "--outputformat", choices=["avid", "csv", "pr", "srt", "md"])
     parser.add_argument("-s", "--splitsingle", type=int)
     parser.add_argument("-m", "--splitmulti", type=int)
     parser.add_argument("-r", "--framerate", type=float, default=25)
@@ -995,6 +1187,8 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--totimecode", default="00:00:00:00")
     parser.add_argument("-df", "--dropframe", action="store_const", const=True)
     parser.add_argument("-D", "--decoder", default="utf-8-sig")
+    parser.add_argument("-qr", "--quoteread", nargs="?", const="PROMPT")
+    parser.add_argument("-qw", "--quotewrite", nargs="?", const="PROMPT")
     args = parser.parse_args()
 
     if args.outputformat is None and args.output_file is None:
@@ -1009,6 +1203,18 @@ if __name__ == "__main__":
     splitCount = 1
     sofString = "----------------Start of File----------------"
     eofString = "----------------End of File----------------"
+
+    if args.quotewrite is not None:
+        if args.quotewrite == "PROMPT":
+            CSV_QUOTE_OUT = input("Enter write quote character [\\]: ").strip() or '\\'
+        else:
+            CSV_QUOTE_OUT = args.quotewrite
+
+    if args.quoteread is not None:
+        if args.quoteread == "PROMPT":
+            CSV_QUOTE_IN = input("Enter read quote character [\\]: ").strip() or '\\'
+        else:
+            CSV_QUOTE_IN = args.quoteread
 
     originTC = args.fromtimecode
     targetTC = args.totimecode
@@ -1053,11 +1259,18 @@ if __name__ == "__main__":
         with o as readFile:
             inputLines = readFile.readlines()
 
+    if args.quoteread is None:
+        for line in inputLines:
+            stripped = line.strip()
+            if stripped:
+                CSV_QUOTE_IN = '"' if stripped.startswith('"') else '\\'
+                break
+
     if inputBaseDirPair[1] == ".txt":
         if args.inputformat is None:
             print(
                 "Please define the type of the input txt file with [-if|--inputformat] argument\n",
-                "Supported types are avid, csv, pr and srt",
+                "Supported types are avid, csv, pr, srt and md",
             )
             sys.exit()
         else:
@@ -1138,13 +1351,15 @@ if __name__ == "__main__":
         if outputBaseDirPair[1] == ".txt" or outputBaseDirPair[1] == "":
             print(
                 "Please define the type of the output txt file with [-of|--outformat] argument\n",
-                "Supported types are avid, csv, pr and srt",
+                "Supported types are avid, csv, pr, srt and md",
             )
             sys.exit()
         elif outputBaseDirPair[1] == ".csv":
             outputFileType = "csv"
         elif outputBaseDirPair[1] == ".srt":
             outputFileType = "srt"
+        elif outputBaseDirPair[1] == ".md":
+            outputFileType = "md"
         else:
             print("Defined output file extension not supported")
 
@@ -1348,6 +1563,59 @@ if __name__ == "__main__":
                     with open(outputFile, "w", encoding=decoder) as outputPr:
                         outputPr.writelines(outputPrLines)
                     print(eofString)
+        elif outputFileType == "md":
+            if inputFileType == "avid":
+                for lang in range(splitCount):
+                    outputFile = outputBaseName + "_L" + str(lang + 1) + ".md"
+                    print(
+                        f"\n\n\nWriting L{lang + 1} of Avid Subcap as Markdown to {outputFile}\n\n{sofString}"
+                    )
+                    outputMdLines = [f"# {outputBaseName}_L{lang + 1}\n\n"]
+                    outputMdLines += amcSplitMd(
+                        inputLines, offsetFrames, framerate, dropFrame, splitCount, lang
+                    )
+                    with open(outputFile, "w", encoding=decoder) as outputMd:
+                        outputMd.writelines(outputMdLines)
+                    print(eofString)
+            elif inputFileType == "csv":
+                for lang in range(splitCount):
+                    outputFile = outputBaseName + "_L" + str(lang + 1) + ".md"
+                    print(
+                        f"\n\n\nWriting L{lang + 1} of CSV as Markdown to {outputFile}\n\n{sofString}"
+                    )
+                    outputMdLines = [f"# {outputBaseName}_L{lang + 1}\n\n"]
+                    outputMdLines += csvSplitMd(
+                        inputLines, offsetFrames, framerate, dropFrame, lang
+                    )
+                    with open(outputFile, "w", encoding=decoder) as outputMd:
+                        outputMd.writelines(outputMdLines)
+                    print(eofString)
+            elif inputFileType == "pr":
+                for lang in range(splitCount):
+                    outputFile = outputBaseName + "_L" + str(lang + 1) + ".md"
+                    print(
+                        f"\n\n\nWriting L{lang + 1} of Pr as Markdown to {outputFile}\n\n{sofString}"
+                    )
+                    outputMdLines = [f"# {outputBaseName}_L{lang + 1}\n\n"]
+                    outputMdLines += prSplitMd(
+                        inputLines, offsetFrames, framerate, dropFrame, splitCount, lang
+                    )
+                    with open(outputFile, "w", encoding=decoder) as outputMd:
+                        outputMd.writelines(outputMdLines)
+                    print(eofString)
+            elif inputFileType == "srt":
+                for lang in range(splitCount):
+                    outputFile = outputBaseName + "_L" + str(lang + 1) + ".md"
+                    print(
+                        f"\n\n\nWriting L{lang + 1} of SRT as Markdown to {outputFile}\n\n{sofString}"
+                    )
+                    outputMdLines = [f"# {outputBaseName}_L{lang + 1}\n\n"]
+                    outputMdLines += srtSplitMd(
+                        inputLines, offsetFrames, framerate, splitCount, lang
+                    )
+                    with open(outputFile, "w", encoding=decoder) as outputMd:
+                        outputMd.writelines(outputMdLines)
+                    print(eofString)
     else:
         if outputFileType == "avid":
             outputFile = outputBaseName + ".txt"
@@ -1485,3 +1753,21 @@ if __name__ == "__main__":
                 with open(outputFile, "w", encoding=decoder) as outputPr:
                     outputPr.writelines(outputPrLines)
                 print(eofString)
+        elif outputFileType == "md":
+            outputFile = outputBaseName + ".md"
+            outputMdLines = [f"# {outputBaseName}\n\n"]
+            if inputFileType == "avid":
+                print(f"\n\n\nWriting Avid Subcap as Markdown table to {outputFile}\n\n{sofString}")
+                outputMdLines += amcToMd(inputLines, offsetFrames, framerate, dropFrame)
+            elif inputFileType == "csv":
+                print(f"\n\n\nWriting CSV as Markdown table to {outputFile}\n\n{sofString}")
+                outputMdLines += csvToMd(inputLines, offsetFrames, framerate, dropFrame)
+            elif inputFileType == "pr":
+                print(f"\n\n\nWriting Premiere Pro as Markdown table to {outputFile}\n\n{sofString}")
+                outputMdLines += prToMd(inputLines, offsetFrames, framerate, dropFrame)
+            elif inputFileType == "srt":
+                print(f"\n\n\nWriting SRT as Markdown table to {outputFile}\n\n{sofString}")
+                outputMdLines += srtToMd(inputLines, offsetFrames, framerate)
+            with open(outputFile, "w", encoding=decoder) as outputMd:
+                outputMd.writelines(outputMdLines)
+            print(eofString)
