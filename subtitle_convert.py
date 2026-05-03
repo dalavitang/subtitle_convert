@@ -291,15 +291,64 @@ def write_md(blocks):
     return out
 
 
+def read_md(lines):
+    blocks = []
+    tc_re = re.compile(r"\d\d:\d\d:\d\d[:;]\d\d")
+    sep_re = re.compile(r"^\|[\s\-:]+\|")
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if not stripped.startswith("|"):
+            continue
+        if sep_re.match(stripped):
+            continue
+        cells = re.split(r"(?<!\\)\|", stripped)
+        cells = [c.strip() for c in cells[1:-1]]
+        if len(cells) < 2:
+            continue
+        if not tc_re.match(cells[0]):
+            continue
+        cells = [c.replace("\\|", "|").replace("<br>", "\n") for c in cells]
+        blocks.append(CaptionBlock(cells[0], cells[1], cells[2:]))
+    return blocks
+
+
+def detect_framerate(input_lines):
+    candidates = [24, 25, 30, 48, 50, 60]
+    ts_re = re.compile(r",(\d{3})")
+    ms_set = set()
+    for line in input_lines:
+        for ms_str in ts_re.findall(line):
+            ms_set.add(int(ms_str))
+            if len(ms_set) >= 8:
+                break
+        if len(ms_set) >= 8:
+            break
+    ms_values = list(ms_set)
+    if len(ms_values) <= 1:
+        return 25, False
+    best, best_score = 25, float("inf")
+    for fr in candidates:
+        dur = 1000 / fr
+        wrapped = [min(v % dur, dur - v % dur) for v in ms_values]
+        penalty = sum(w * w for w in wrapped) / len(wrapped)
+        if penalty < best_score:
+            best, best_score = fr, penalty
+    if best_score > 4.0:
+        return 25, False
+    return best, True
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("input_file")
     parser.add_argument("output_file", nargs="?", default=None)
-    parser.add_argument("-if", "--inputformat", choices=["avid", "csv", "pr", "srt"])
+    parser.add_argument("-if", "--inputformat", choices=["avid", "csv", "pr", "srt", "md"])
     parser.add_argument("-of", "--outputformat", action="append",
                         choices=["avid", "csv", "pr", "srt", "md"])
     parser.add_argument("-m", "--splitmulti", type=int, default=None)
-    parser.add_argument("-r", "--framerate", type=float, default=25)
+    parser.add_argument("-r", "--framerate", type=float, default=None)
     parser.add_argument("-f", "--fromtimecode", default="00:00:00:00")
     parser.add_argument("-t", "--totimecode", default="00:00:00:00")
     parser.add_argument("-df", "--dropframe", action="store_const", const=True)
@@ -331,30 +380,6 @@ if __name__ == "__main__":
 
     origin_tc = args.fromtimecode
     target_tc = args.totimecode
-    framerate = args.framerate
-    if args.dropframe is None:
-        if framerate in [29.97, 59.94]:
-            while True:
-                drop_frame_input = (
-                    input("Use drop-frame timecode (y/n, default n)): \n")
-                    .strip()
-                    .lower()
-                    or "n"
-                )
-                if drop_frame_input == "y":
-                    drop_frame = True
-                    break
-                elif drop_frame_input == "n":
-                    drop_frame = False
-                    break
-        else:
-            drop_frame = False
-    else:
-        drop_frame = args.dropframe
-
-    offset_frames = timecode_to_frames(target_tc, framerate, drop_frame) - timecode_to_frames(
-        origin_tc, framerate, drop_frame
-    )
 
     input_file = args.input_file
     try:
@@ -391,11 +416,57 @@ if __name__ == "__main__":
         input_file_type = "csv"
     elif input_base_dir_pair[1] == ".srt":
         input_file_type = "srt"
+    elif input_base_dir_pair[1] == ".md":
+        input_file_type = "md"
     else:
         print(
-            "Input file format not supported\n Supported formats are csv, srt and txt"
+            "Input file format not supported\n Supported formats are csv, srt, md and txt"
         )
         sys.exit()
+
+    # Determine framerate
+    framerate_messages = []
+    if input_file_type == "srt":
+        detected, ok = detect_framerate(input_lines)
+        if args.framerate is not None:
+            framerate = args.framerate
+            if framerate != detected:
+                framerate_messages.append(f"\033[33mWarning: auto-detected {detected}fps, using {framerate}fps\033[0m")
+            else:
+                framerate_messages.append(f"\033[32mAuto-detected framerate: {framerate}fps (matches -r)\033[0m")
+        else:
+            framerate = detected
+            if ok:
+                framerate_messages.append(f"\033[32mAuto-detected framerate: {framerate}fps\033[0m")
+            else:
+                framerate_messages.append(f"\033[33mCould not detect framerate, defaulting to {framerate}fps\033[0m")
+    else:
+        framerate = args.framerate or 25
+        framerate_messages.append(f"\033[36mUsed framerate: {framerate}fps\033[0m")
+
+    if args.dropframe is None:
+        if framerate in [29.97, 59.94]:
+            while True:
+                drop_frame_input = (
+                    input("Use drop-frame timecode (y/n, default n)): \n")
+                    .strip()
+                    .lower()
+                    or "n"
+                )
+                if drop_frame_input == "y":
+                    drop_frame = True
+                    break
+                elif drop_frame_input == "n":
+                    drop_frame = False
+                    break
+        else:
+            drop_frame = False
+    else:
+        drop_frame = args.dropframe
+
+    offset_frames = timecode_to_frames(target_tc, framerate, drop_frame) - timecode_to_frames(
+        origin_tc, framerate, drop_frame
+    )
 
     # Define output file name
     if args.output_file is not None:
@@ -465,6 +536,8 @@ if __name__ == "__main__":
         blocks = read_pr(input_lines)
     elif input_file_type == "srt":
         blocks = read_srt(input_lines, framerate)
+    elif input_file_type == "md":
+        blocks = read_md(input_lines)
     else:
         print("Unknown input format")
         sys.exit(2)
@@ -536,8 +609,8 @@ if __name__ == "__main__":
                 with open(output_file, "w", encoding=decoder) as f:
                     for line in output_lines:
                         print(line, end="")
-                    f.writelines(output_lines)
-                print(eof_string)
+                f.writelines(output_lines)
+            print(eof_string)
         else:
             output_file = output_base_name + ext
             print(f"\n\n\nWriting to {output_file}\n\n{sof_string}")
@@ -559,3 +632,6 @@ if __name__ == "__main__":
                     print(line, end="")
                 f.writelines(output_lines)
             print(eof_string)
+
+    for msg in framerate_messages:
+        print(msg)
