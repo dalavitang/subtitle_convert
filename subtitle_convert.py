@@ -534,6 +534,8 @@ if __name__ == "__main__":
                 elif fmt == "md":
                     output_lines += write_md(split)
                 with open(output_file, "w", encoding=decoder) as f:
+                    for line in output_lines:
+                        print(line, end="")
                     f.writelines(output_lines)
                 print(eof_string)
         else:
@@ -553,5 +555,7 @@ if __name__ == "__main__":
             elif fmt == "md":
                 output_lines += write_md(blocks)
             with open(output_file, "w", encoding=decoder) as f:
+                for line in output_lines:
+                    print(line, end="")
                 f.writelines(output_lines)
             print(eof_string)
