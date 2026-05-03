@@ -17,110 +17,110 @@ class CaptionBlock:
     lines: list
 
 
-def timecodeToFrames(tcString, framerate, dropFrame=False):
-    tcString = tcString.strip()
-    tcHH, tcMM, tcSS, tcFF = (
-        int(tcString[0:2]),
-        int(tcString[3:5]),
-        int(tcString[6:8]),
-        int(tcString[9:11]),
+def timecode_to_frames(tc_string, framerate, drop_frame=False):
+    tc_string = tc_string.strip()
+    tc_hh, tc_mm, tc_ss, tc_ff = (
+        int(tc_string[0:2]),
+        int(tc_string[3:5]),
+        int(tc_string[6:8]),
+        int(tc_string[9:11]),
     )
-    timeBase = round(framerate)
-    if not dropFrame:
-        frameNumber = tcFF + (((tcHH * 60 + tcMM) * 60) + tcSS) * timeBase
+    time_base = round(framerate)
+    if not drop_frame:
+        frame_number = tc_ff + (((tc_hh * 60 + tc_mm) * 60) + tc_ss) * time_base
     else:
-        totalMinutes = tcHH * 60 + tcMM
-        framesDropped = round(framerate * 2 / 30)
-        frameNumber = (
-            (totalMinutes * 60 + tcSS) * timeBase
-            + tcFF
-            - (framesDropped * (totalMinutes - totalMinutes // 10))
+        total_minutes = tc_hh * 60 + tc_mm
+        frames_dropped = round(framerate * 2 / 30)
+        frame_number = (
+            (total_minutes * 60 + tc_ss) * time_base
+            + tc_ff
+            - (frames_dropped * (total_minutes - total_minutes // 10))
         )
-    return frameNumber
+    return frame_number
 
 
-def framesToTimecode(frameNumber, framerate, dropFrame=False):
-    timeBase = round(framerate)
-    if not dropFrame:
-        tcFF = int(frameNumber % timeBase)
-        totalSeconds = frameNumber // timeBase
-        tcHH = int(totalSeconds // 3600)
-        tcMM = int((totalSeconds - tcHH * 3600) // 60)
-        tcSS = int(totalSeconds % 60)
-        tcString = (
-            str(tcHH).zfill(2)
+def frames_to_timecode(frame_number, framerate, drop_frame=False):
+    time_base = round(framerate)
+    if not drop_frame:
+        tc_ff = int(frame_number % time_base)
+        total_seconds = frame_number // time_base
+        tc_hh = int(total_seconds // 3600)
+        tc_mm = int((total_seconds - tc_hh * 3600) // 60)
+        tc_ss = int(total_seconds % 60)
+        tc_string = (
+            str(tc_hh).zfill(2)
             + ":"
-            + str(tcMM).zfill(2)
+            + str(tc_mm).zfill(2)
             + ":"
-            + str(tcSS).zfill(2)
+            + str(tc_ss).zfill(2)
             + ":"
-            + str(tcFF).zfill(2)
+            + str(tc_ff).zfill(2)
         )
     else:
-        framesDropped = round(framerate * 2 / 30)
-        framesTenMinutes = round(framerate * 600)
-        framesPerMinute = round(framerate) * 60 - framesDropped
-        d = frameNumber // framesTenMinutes
-        m = frameNumber % framesTenMinutes
-        if m > framesDropped:
-            frameNumber = (
-                frameNumber
-                + framesDropped * 9 * d
-                + framesDropped * ((m - framesDropped) // framesPerMinute)
+        frames_dropped = round(framerate * 2 / 30)
+        frames_ten_minutes = round(framerate * 600)
+        frames_per_minute = round(framerate) * 60 - frames_dropped
+        d = frame_number // frames_ten_minutes
+        m = frame_number % frames_ten_minutes
+        if m > frames_dropped:
+            frame_number = (
+                frame_number
+                + frames_dropped * 9 * d
+                + frames_dropped * ((m - frames_dropped) // frames_per_minute)
             )
         else:
-            frameNumber = frameNumber + framesDropped * 9 * d
-        tcHH = ((frameNumber // timeBase) // 60) // 60
-        tcMM = ((frameNumber // timeBase) // 60) % 60
-        tcSS = (frameNumber // timeBase) % 60
-        tcFF = frameNumber % timeBase
-        tcString = (
-            str(tcHH).zfill(2)
+            frame_number = frame_number + frames_dropped * 9 * d
+        tc_hh = ((frame_number // time_base) // 60) // 60
+        tc_mm = ((frame_number // time_base) // 60) % 60
+        tc_ss = (frame_number // time_base) % 60
+        tc_ff = frame_number % time_base
+        tc_string = (
+            str(tc_hh).zfill(2)
             + ":"
-            + str(tcMM).zfill(2)
+            + str(tc_mm).zfill(2)
             + ":"
-            + str(tcSS).zfill(2)
+            + str(tc_ss).zfill(2)
             + ";"
-            + str(tcFF).zfill(2)
+            + str(tc_ff).zfill(2)
         )
-    return tcString
+    return tc_string
 
 
-def timecodeToSrtTimestamp(tcString, framerate):
-    frameDur = 1000 / framerate
-    tcHH, tcMM, tcSS, tcFF = (
-        int(tcString[0:2]),
-        int(tcString[3:5]),
-        int(tcString[6:8]),
-        int(tcString[9:11]),
+def timecode_to_timestamp(tc_string, framerate):
+    frame_time = 1000 / framerate
+    tc_hh, tc_mm, tc_ss, tc_ff = (
+        int(tc_string[0:2]),
+        int(tc_string[3:5]),
+        int(tc_string[6:8]),
+        int(tc_string[9:11]),
     )
-    srtMS = str(int(int(tcFF) * frameDur)).zfill(3)
-    srtTimestamp = (
-        str(tcHH).zfill(2)
+    ts_ms = str(int(int(tc_ff) * frame_time)).zfill(3)
+    timestamp = (
+        str(tc_hh).zfill(2)
         + ":"
-        + str(tcMM).zfill(2)
+        + str(tc_mm).zfill(2)
         + ":"
-        + str(tcSS).zfill(2)
+        + str(tc_ss).zfill(2)
         + ","
-        + srtMS
+        + ts_ms
     )
-    return srtTimestamp
+    return timestamp
 
 
-def srtTimestampToTimecode(srtTimestamp, framerate):
-    frameDur = 1000 / framerate
-    tcHH, tcMM, srtSSMS = srtTimestamp.split(":")
-    tcSS, srtMS = srtSSMS.split(",")
-    tcFF = round(int(srtMS) / frameDur)
-    tcString = tcHH + ":" + tcMM + ":" + tcSS + ":" + str(tcFF).zfill(2)
-    return tcString
+def timestamp_to_timecode(timestamp, framerate):
+    frame_time = 1000 / framerate
+    tc_hh, tc_mm, ts_ss_ms = timestamp.split(":")
+    tc_ss, ts_ms = ts_ss_ms.split(",")
+    tc_ff = round(int(ts_ms) / frame_time)
+    tc_string = tc_hh + ":" + tc_mm + ":" + tc_ss + ":" + str(tc_ff).zfill(2)
+    return tc_string
 
 
-def timecodeAlign(sourceTimecode, framesDiff, framerate, dropFrame=False):
-    targetFramesCount = (
-        timecodeToFrames(sourceTimecode, framerate, dropFrame) + framesDiff
+def align_timecode(source_tc, frames_diff, framerate, drop_frame=False):
+    target_frame_count = (
+        timecode_to_frames(source_tc, framerate, drop_frame) + frames_diff
     )
-    return framesToTimecode(targetFramesCount, framerate, dropFrame)
+    return frames_to_timecode(target_frame_count, framerate, drop_frame)
 
 
 def _md_escape_field(text):
@@ -141,8 +141,8 @@ def _csv_write_row(fields, quotechar):
 
 def align_blocks(blocks, offset_frames, framerate, drop_frame):
     for b in blocks:
-        b.timecode_in = timecodeAlign(b.timecode_in, offset_frames, framerate, drop_frame)
-        b.timecode_out = timecodeAlign(b.timecode_out, offset_frames, framerate, drop_frame)
+        b.timecode_in = align_timecode(b.timecode_in, offset_frames, framerate, drop_frame)
+        b.timecode_out = align_timecode(b.timecode_out, offset_frames, framerate, drop_frame)
     return blocks
 
 
@@ -226,9 +226,9 @@ def read_srt(lines, framerate):
     line_count = len(lines)
     tc_indices = [i for i in range(line_count) if tc_pattern.match(lines[i])]
     for idx, i in enumerate(tc_indices):
-        srt_in, srt_out = lines[i].strip().split(" --> ")
-        tc_in = srtTimestampToTimecode(srt_in, framerate)
-        tc_out = srtTimestampToTimecode(srt_out, framerate)
+        ts_in, ts_out = lines[i].strip().split(" --> ")
+        tc_in = timestamp_to_timecode(ts_in, framerate)
+        tc_out = timestamp_to_timecode(ts_out, framerate)
         end = tc_indices[idx + 1] if idx + 1 < len(tc_indices) else line_count
         cap_lines = []
         for j in range(i + 1, end):
@@ -274,10 +274,10 @@ def write_pr(blocks):
 def write_srt(blocks, framerate):
     out = []
     for i, b in enumerate(blocks):
-        srt_in = timecodeToSrtTimestamp(b.timecode_in, framerate)
-        srt_out = timecodeToSrtTimestamp(b.timecode_out, framerate)
+        ts_in = timecode_to_timestamp(b.timecode_in, framerate)
+        ts_out = timecode_to_timestamp(b.timecode_out, framerate)
         out.append(f"{i + 1}\n")
-        out.append(f"{srt_in} --> {srt_out}\n")
+        out.append(f"{ts_in} --> {ts_out}\n")
         for line in b.lines:
             out.append(f"{line}\n")
         out.append("\n")
@@ -298,7 +298,6 @@ if __name__ == "__main__":
     parser.add_argument("-if", "--inputformat", choices=["avid", "csv", "pr", "srt"])
     parser.add_argument("-of", "--outputformat", action="append",
                         choices=["avid", "csv", "pr", "srt", "md"])
-    parser.add_argument("-s", "--splitsingle", type=int)
     parser.add_argument("-m", "--splitmulti", type=int, default=None)
     parser.add_argument("-r", "--framerate", type=float, default=25)
     parser.add_argument("-f", "--fromtimecode", default="00:00:00:00")
@@ -313,14 +312,10 @@ if __name__ == "__main__":
         print("Please specify either an output file name or the output file format.")
         sys.exit()
 
-    operationMode = []
-    outputFileSet = 0
-    explicitMode = 1
     decoder = args.decoder
-    inputFileType = ""
-    splitCount = 1
-    sofString = "----------------Start of File----------------"
-    eofString = "----------------End of File----------------"
+    input_file_type = ""
+    sof_string = "----------------Start of File----------------"
+    eof_string = "----------------End of File----------------"
 
     if args.quotewrite is not None:
         if args.quotewrite == "PROMPT":
@@ -334,57 +329,56 @@ if __name__ == "__main__":
         else:
             CSV_QUOTE_IN = args.quoteread
 
-    originTC = args.fromtimecode
-    targetTC = args.totimecode
+    origin_tc = args.fromtimecode
+    target_tc = args.totimecode
     framerate = args.framerate
     if args.dropframe is None:
         if framerate in [29.97, 59.94]:
             while True:
-                dropFrameInput = (
+                drop_frame_input = (
                     input("Use drop-frame timecode (y/n, default n)): \n")
                     .strip()
                     .lower()
                     or "n"
                 )
-                if dropFrameInput == "y":
-                    dropFrame = True
+                if drop_frame_input == "y":
+                    drop_frame = True
                     break
-                elif dropFrameInput == "n":
-                    dropFrame = False
+                elif drop_frame_input == "n":
+                    drop_frame = False
                     break
         else:
-            dropFrame = False
+            drop_frame = False
     else:
-        dropFrame = args.dropframe
+        drop_frame = args.dropframe
 
-    offsetFrames = timecodeToFrames(targetTC, framerate, dropFrame) - timecodeToFrames(
-        originTC, framerate, dropFrame
+    offset_frames = timecode_to_frames(target_tc, framerate, drop_frame) - timecode_to_frames(
+        origin_tc, framerate, drop_frame
     )
-    srtOffsetFrames = 0 - timecodeToFrames(originTC, framerate, dropFrame)
 
-    inputFile = args.input_file
+    input_file = args.input_file
     try:
-        inputBaseDirPair = os.path.splitext(inputFile)
+        input_base_dir_pair = os.path.splitext(input_file)
     except os.error as err:
         print(str(err))
         sys.exit(2)
     try:
-        o = open(inputFile, "r", encoding=args.decoder)
+        o = open(input_file, "r", encoding=args.decoder)
     except FileNotFoundError:
         print("Input file not found!")
         sys.exit(2)
     else:
-        with o as readFile:
-            inputLines = readFile.readlines()
+        with o as read_file:
+            input_lines = read_file.readlines()
 
     if args.quoteread is None:
-        for line in inputLines:
+        for line in input_lines:
             stripped = line.strip()
             if stripped:
                 CSV_QUOTE_IN = '"' if stripped.startswith('"') else '\\'
                 break
 
-    if inputBaseDirPair[1] == ".txt":
+    if input_base_dir_pair[1] == ".txt":
         if args.inputformat is None:
             print(
                 "Please define the type of the input txt file with [-if|--inputformat] argument\n",
@@ -392,11 +386,11 @@ if __name__ == "__main__":
             )
             sys.exit()
         else:
-            inputFileType = args.inputformat
-    elif inputBaseDirPair[1] == ".csv":
-        inputFileType = "csv"
-    elif inputBaseDirPair[1] == ".srt":
-        inputFileType = "srt"
+            input_file_type = args.inputformat
+    elif input_base_dir_pair[1] == ".csv":
+        input_file_type = "csv"
+    elif input_base_dir_pair[1] == ".srt":
+        input_file_type = "srt"
     else:
         print(
             "Input file format not supported\n Supported formats are csv, srt and txt"
@@ -406,71 +400,71 @@ if __name__ == "__main__":
     # Define output file name
     if args.output_file is not None:
         try:
-            outputBaseDirPair = os.path.splitext(args.output_file)
+            output_base_dir_pair = os.path.splitext(args.output_file)
         except os.error as err:
             print(str(err))
             sys.exit(2)
-        if originTC == targetTC:
-            outputBaseName = outputBaseDirPair[0]
+        if origin_tc == target_tc:
+            output_base_name = output_base_dir_pair[0]
         else:
-            outputBaseName = (
-                outputBaseDirPair[0]
+            output_base_name = (
+                output_base_dir_pair[0]
                 + "_alignedTo_"
-                + targetTC[0:2]
+                + target_tc[0:2]
                 + "-"
-                + targetTC[3:5]
+                + target_tc[3:5]
                 + "-"
-                + targetTC[6:8]
+                + target_tc[6:8]
                 + "-"
-                + targetTC[9:11]
+                + target_tc[9:11]
                 + "_"
                 + str(framerate)
                 + "FPS"
             )
     else:
-        if originTC == targetTC:
-            outputBaseName = inputBaseDirPair[0]
+        if origin_tc == target_tc:
+            output_base_name = input_base_dir_pair[0]
         else:
-            if re.match(r".*_alignedTo_\d\d-\d\d-\d\d-\d\d_", inputBaseDirPair[0]):
-                outputBaseName = (
-                    re.split(r"_alignedTo_", inputBaseDirPair[0], 1)[0]
+            if re.match(r".*_alignedTo_\d\d-\d\d-\d\d-\d\d_", input_base_dir_pair[0]):
+                output_base_name = (
+                    re.split(r"_alignedTo_", input_base_dir_pair[0], 1)[0]
                     + "_alignedTo_"
-                    + targetTC[0:2]
+                    + target_tc[0:2]
                     + "-"
-                    + targetTC[3:5]
+                    + target_tc[3:5]
                     + "-"
-                    + targetTC[6:8]
+                    + target_tc[6:8]
                     + "-"
-                    + targetTC[9:11]
+                    + target_tc[9:11]
                     + "_"
                     + str(framerate)
                     + "FPS"
                 )
             else:
-                outputBaseName = (
-                    inputBaseDirPair[0]
+                output_base_name = (
+                    input_base_dir_pair[0]
                     + "_alignedTo_"
-                    + targetTC[0:2]
+                    + target_tc[0:2]
                     + "-"
-                    + targetTC[3:5]
+                    + target_tc[3:5]
                     + "-"
-                    + targetTC[6:8]
+                    + target_tc[6:8]
                     + "-"
-                    + targetTC[9:11]
+                    + target_tc[9:11]
                     + "_"
                     + str(framerate)
                     + "FPS"
                 )
 
     # Parse input into blocks
-    if inputFileType == "avid":
-        blocks = read_amc(inputLines)
-    elif inputFileType == "csv":
-        blocks = read_csv(inputLines, CSV_QUOTE_IN)
-    elif inputFileType == "pr":
-        blocks = read_pr(inputLines)
-    elif inputFileType == "srt":
-        blocks = read_srt(inputLines, framerate)
+    if input_file_type == "avid":
+        blocks = read_amc(input_lines)
+    elif input_file_type == "csv":
+        blocks = read_csv(input_lines, CSV_QUOTE_IN)
+    elif input_file_type == "pr":
+        blocks = read_pr(input_lines)
+    elif input_file_type == "srt":
+        blocks = read_srt(input_lines, framerate)
     else:
         print("Unknown input format")
         sys.exit(2)
@@ -493,25 +487,25 @@ if __name__ == "__main__":
         do_split = False
 
     # Align timecodes once
-    if originTC != targetTC:
-        align_blocks(blocks, offsetFrames, framerate, dropFrame)
+    if origin_tc != target_tc:
+        align_blocks(blocks, offset_frames, framerate, drop_frame)
 
     # Determine output formats
     if args.outputformat:
         output_formats = args.outputformat
     else:
-        if outputBaseDirPair[1] in (".txt", ""):
+        if output_base_dir_pair[1] in (".txt", ""):
             print(
                 "Please define the type of the output txt file "
                 "with [-of|--outputformat] argument\n"
                 "Supported types are avid, csv, pr, srt and md",
             )
             sys.exit()
-        elif outputBaseDirPair[1] == ".csv":
+        elif output_base_dir_pair[1] == ".csv":
             output_formats = ["csv"]
-        elif outputBaseDirPair[1] == ".srt":
+        elif output_base_dir_pair[1] == ".srt":
             output_formats = ["srt"]
-        elif outputBaseDirPair[1] == ".md":
+        elif output_base_dir_pair[1] == ".md":
             output_formats = ["md"]
         else:
             print("Defined output file extension not supported")
@@ -523,41 +517,41 @@ if __name__ == "__main__":
         ext = ext_map[fmt]
         if do_split:
             for lang in range(target):
-                outputFile = outputBaseName + "_L" + str(lang + 1) + ext
-                print(f"\n\n\nWriting L{lang + 1} to {outputFile}\n\n{sofString}")
+                output_file = output_base_name + "_L" + str(lang + 1) + ext
+                print(f"\n\n\nWriting L{lang + 1} to {output_file}\n\n{sof_string}")
                 split = split_blocks(blocks, lang, target)
-                outputLines = []
+                output_lines = []
                 if fmt == "md":
-                    outputLines.append(f"# {outputBaseName}_L{lang + 1}\n\n")
+                    output_lines.append(f"# {output_base_name}_L{lang + 1}\n\n")
                 if fmt == "avid":
-                    outputLines += write_amc(split)
+                    output_lines += write_amc(split)
                 elif fmt == "csv":
-                    outputLines += write_csv(split, CSV_QUOTE_OUT)
+                    output_lines += write_csv(split, CSV_QUOTE_OUT)
                 elif fmt == "pr":
-                    outputLines += write_pr(split)
+                    output_lines += write_pr(split)
                 elif fmt == "srt":
-                    outputLines += write_srt(split, framerate)
+                    output_lines += write_srt(split, framerate)
                 elif fmt == "md":
-                    outputLines += write_md(split)
-                with open(outputFile, "w", encoding=decoder) as f:
-                    f.writelines(outputLines)
-                print(eofString)
+                    output_lines += write_md(split)
+                with open(output_file, "w", encoding=decoder) as f:
+                    f.writelines(output_lines)
+                print(eof_string)
         else:
-            outputFile = outputBaseName + ext
-            print(f"\n\n\nWriting to {outputFile}\n\n{sofString}")
-            outputLines = []
+            output_file = output_base_name + ext
+            print(f"\n\n\nWriting to {output_file}\n\n{sof_string}")
+            output_lines = []
             if fmt == "md":
-                outputLines.append(f"# {outputBaseName}\n\n")
+                output_lines.append(f"# {output_base_name}\n\n")
             if fmt == "avid":
-                outputLines += write_amc(blocks)
+                output_lines += write_amc(blocks)
             elif fmt == "csv":
-                outputLines += write_csv(blocks, CSV_QUOTE_OUT)
+                output_lines += write_csv(blocks, CSV_QUOTE_OUT)
             elif fmt == "pr":
-                outputLines += write_pr(blocks)
+                output_lines += write_pr(blocks)
             elif fmt == "srt":
-                outputLines += write_srt(blocks, framerate)
+                output_lines += write_srt(blocks, framerate)
             elif fmt == "md":
-                outputLines += write_md(blocks)
-            with open(outputFile, "w", encoding=decoder) as f:
-                f.writelines(outputLines)
-            print(eofString)
+                output_lines += write_md(blocks)
+            with open(output_file, "w", encoding=decoder) as f:
+                f.writelines(output_lines)
+            print(eof_string)
