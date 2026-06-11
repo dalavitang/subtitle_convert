@@ -4,7 +4,7 @@ Subtitle timecode conversion and alignment tool. Converts between Avid Subcap, C
 
 Key features:
 
-- **Five subtitle formats** — Read and write Avid Subcap (`.txt`), CSV (`.csv`), PR dot-timecode (`.txt`), SRT (`.srt`), and Markdown tables (`.md`).
+- **Five subtitle formats** — Read and write Avid Subcap (`.txt`), CSV (`.csv`), Adobe Premiere Pro native subtitles (`.txt`), SRT (`.srt`), and Markdown tables (`.md`).
 - **Timecode alignment** — Shift all timecodes by a frame offset. Specify origin and target timecodes; the script computes the difference and realigns every caption.
 - **Combine/merge mode** — Feed two subtitle files at once, aligned. Overlapping blocks are merged by tolerance, and the result is written as one unified file.
 - **Multi-language splitting** — If your subtitle file contains multiple language columns, split them into independent files (`_L1`, `_L2`, etc.).
@@ -32,8 +32,8 @@ Positional arguments (`input_file`, `output_file`) are optional when the equival
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-if`, `--inputformat` | *(auto)* | Input format. Required for `.txt` files. Choices: `avid`, `csv`, `pr`, `srt`, `md`. Otherwise auto-detected from file extension. |
-| `-of`, `--outputformat` | *(auto)* | Output format. Repeatable. Choices: `avid`, `csv`, `pr`, `srt`, `md`. Auto-detected from `-o` extension if omitted. |
+| `-if`, `--inputformat` | *(auto)* | Input format. Required for `.txt` files (disambiguate Avid Subcap vs PR). Optional for `.csv`, `.srt`, `.md` — auto-detected from extension. Choices: `avid`, `csv`, `pr`, `srt`, `md`. |
+| `-of`, `--outputformat` | *(auto)* | Output format. Required for `.txt` output or when `-o` has no extension. Optional otherwise — auto-detected from `-o` extension. Repeatable to produce multiple outputs. Choices: `avid`, `csv`, `pr`, `srt`, `md`. |
 | `-m`, `--splitmulti N` | *(off)* | Split into N single-language files. Language columns beyond N are joined into the last file. |
 | `-r`, `--framerate F` | auto / 25 | Override framerate. Auto-detected for SRT input; defaults to 25 for other formats. |
 | `-f`, `--fromtimecode TC` | `00:00:00:00` | Origin timecode for alignment (format: `HH:MM:SS:FF`). |
@@ -43,6 +43,86 @@ Positional arguments (`input_file`, `output_file`) are optional when the equival
 | `-D`, `--decoder ENC` | `utf-8-sig` | Input file encoding. |
 | `-qr`, `--quoteread CHAR` | auto | CSV quote character for reading. Use bare `-qr` to prompt interactively. |
 | `-qw`, `--quotewrite CHAR` | auto | CSV quote character for writing. Use bare `-qw` to prompt interactively. |
+
+### Option details
+
+**`-if` / `--inputformat`**
+
+For `.csv`, `.srt`, and `.md` files the format is determined entirely by the file extension. `-if` has no effect — passing `-if srt` with a `.csv` file will still treat it as CSV.
+
+For `.txt` files `-if` is **required**. Avid Subcap and PR both use the `.txt` extension and cannot be distinguished automatically.
+
+**`-of` / `--outputformat`**
+
+If `-o` specifies a known extension (`.csv`, `.srt`, `.md`), the output format is auto-detected and `-of` is optional. For `.txt` output or output files with no extension, `-of` is required. Specify `-of` multiple times to write the same data in several formats from one run.
+
+**`-r` / `--framerate`**
+
+For SRT input the framerate is auto-detected from millisecond values in timestamps. Use `-r` to override. For all other input formats the default is 25 fps. The framerate affects timecode-to-timestamp conversion and timecode alignment math.
+
+**`-f` / `--fromtimecode` and `-t` / `--totimecode`**
+
+Set both to apply a timecode shift. The script computes the frame difference `totimecode − fromtimecode` and offsets every caption. Use `HH:MM:SS:FF` format. When the two values are equal no alignment is performed.
+
+**`-df` / `--dropframe`**
+
+Enables drop-frame timecode (`HH:MM:SS;FF`). If omitted and the framerate is 29.97 or 59.94 (common drop-frame rates), the script prompts interactively. For all other framerates drop-frame is off by default.
+
+**`-m` / `--splitmulti`**
+
+Splits multi-language data into N separate output files (`_L1`, `_L2`, …, `_LN`). If the data has more language columns than N, the excess columns are joined into the last file. If fewer, empty lines are padded. Use with `-of` to control the output format of the split files.
+
+**`-tl` / `--tolerance`**
+
+In combine mode (two input files), this is the number of frames by which overlapping blocks may differ before they are considered separate entries. Larger values merge more aggressively.
+
+**`-qr` / `--quoteread` and `-qw` / `--quotewrite`**
+
+For CSV files, these set the quote character used for reading and writing respectively. By default the script auto-detects the quote character from the first line of the input. Use bare `-qr` or `-qw` (without a value) to be prompted interactively.
+
+**`-D` / `--decoder`**
+
+File encoding for both input and output. Defaults to `utf-8-sig` (UTF-8 with BOM handling).
+
+### Output file naming
+
+The output file name is constructed from the base name and an extension per output format.
+
+**Base name:**
+
+| Condition | Base name |
+|-----------|-----------|
+| `-o` specified | Stem of `-o` (extension stripped) |
+| No `-o` | Stem of the input file |
+
+If timecode alignment is active (`-f` and `-t` differ), a suffix is appended:
+
+```
+{base}_alignedTo_HH-MM-SS-FF_{fps}FPS
+```
+
+When the base name already contains `_alignedTo_` from a previous alignment, the old suffix is replaced rather than stacked.
+
+**Extension per format:**
+
+| Format | Extension |
+|--------|-----------|
+| `avid` | `.txt` |
+| `csv` | `.csv` |
+| `pr` | `.txt` |
+| `srt` | `.srt` |
+| `md` | `.md` |
+
+**Resulting filenames:**
+
+| Mode | Pattern |
+|------|---------|
+| Single `-of` (or auto-detected) | `{base}{ext}` |
+| Multiple `-of` | `{base}{ext1}`, `{base}{ext2}`, … |
+| Split mode (`-m N`) | `{base}_L1{ext}`, `{base}_L2{ext}`, …, `{base}_LN{ext}` |
+| Split + multiple `-of` | `{base}_L1{ext1}`, `{base}_L1{ext2}`, …, `{base}_LN{ext1}`, `{base}_LN{ext2}` |
+
+**When `-o` has an extension that conflicts with `-of`:** the extension from `-of` wins. The base name is always derived from `-o` (stem only), and each output format appends its own extension. For example, `-o out.csv -of srt -of md` produces `out.srt` and `out.md` — the `.csv` in `-o` is discarded.
 
 ### Timecode format
 
