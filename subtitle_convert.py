@@ -567,10 +567,12 @@ if __name__ == "__main__":
             detected, ok = detect_framerate(input_lines)
             if args.framerate is not None:
                 framerate = args.framerate
-                if framerate != detected:
-                    framerate_messages.append(f"\033[33mWarning: auto-detected {detected}fps, using {framerate}fps\033[0m")
-                else:
+                if ok and framerate != detected:
+                    framerate_messages.append(f"\033[33mWarning: auto-detected {detected}fps, used {framerate}fps\033[0m")
+                elif ok:
                     framerate_messages.append(f"\033[32mAuto-detected framerate: {framerate}fps (matches -r)\033[0m")
+                else:
+                    framerate_messages.append(f"\033[36mUsed framerate: {framerate}fps\033[0m")
             else:
                 framerate = detected
                 if ok:
