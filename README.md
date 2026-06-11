@@ -1,4 +1,4 @@
-# TCSync
+# Subtitle Convert
 
 Subtitle timecode conversion and alignment tool. Converts between Avid Subcap, CSV, PR, SRT, and Markdown subtitle formats.
 
