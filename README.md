@@ -87,6 +87,7 @@ Format-specific behavior:
 - **SRT input/output with `-c`**: raw timestamps are stored and written directly. No framerate needed. `-r` is ignored (a warning is shown).
 - **CSV/MD input with `-c`**: if the file contains timestamps, they are preserved as-is. If it contains timecodes, no conversion happens.
 - **Avid/PR with `-c`**: the user is prompted — `-c` has no effect on these formats since they always use timecode. CSV/MD input containing timestamps destined for avid/pr output is converted to timecode regardless of `-c`.
+- **Drop-frame timelines**: when SRT files originate from a drop-frame timeline (29.97 or 59.94 fps), use `-c` to avoid precision loss. The frame-to-millisecond math in drop-frame timecode is inherently lossy — converting through timecode and back can shift timestamps by a frame. `-c` preserves the original SRT millisecond values intact.
 - **Incompatibilities**: `-c` cannot be used with timecode alignment (`-f`/`-t`) or combine mode (two input files).
 
 **`-qr` / `--quoteread` and `-qw` / `--quotewrite`**
