@@ -118,6 +118,10 @@ def timestamp_to_timecode(timestamp, framerate):
     return tc_string
 
 
+def is_timestamp(s):
+    return re.match(r"^\d\d:\d\d:\d\d,\d\d\d$", s) is not None
+
+
 def align_timecode(source_tc, frames_diff, framerate, drop_frame=False):
     target_frame_count = (
         timecode_to_frames(source_tc, framerate, drop_frame) + frames_diff
@@ -340,15 +344,19 @@ def read_pr(lines):
     return blocks
 
 
-def read_srt(lines, framerate):
+def read_srt(lines, framerate, copy_timestamp=False):
     blocks = []
     tc_pattern = re.compile(r"^\d\d:\d\d:\d\d,\d\d\d --> \d\d:\d\d:\d\d,\d\d\d")
     line_count = len(lines)
     tc_indices = [i for i in range(line_count) if tc_pattern.match(lines[i])]
     for idx, i in enumerate(tc_indices):
         ts_in, ts_out = lines[i].strip().split(" --> ")
-        tc_in = timestamp_to_timecode(ts_in, framerate)
-        tc_out = timestamp_to_timecode(ts_out, framerate)
+        if copy_timestamp:
+            tc_in = ts_in
+            tc_out = ts_out
+        else:
+            tc_in = timestamp_to_timecode(ts_in, framerate)
+            tc_out = timestamp_to_timecode(ts_out, framerate)
         end = tc_indices[idx + 1] if idx + 1 < len(tc_indices) else line_count
         cap_lines = []
         for j in range(i + 1, end):
@@ -391,11 +399,15 @@ def write_pr(blocks):
     return out
 
 
-def write_srt(blocks, framerate):
+def write_srt(blocks, framerate, copy_timestamp=False):
     out = []
     for i, b in enumerate(blocks):
-        ts_in = timecode_to_timestamp(b.timecode_in, framerate)
-        ts_out = timecode_to_timestamp(b.timecode_out, framerate)
+        if copy_timestamp:
+            ts_in = b.timecode_in
+            ts_out = b.timecode_out
+        else:
+            ts_in = timecode_to_timestamp(b.timecode_in, framerate)
+            ts_out = timecode_to_timestamp(b.timecode_out, framerate)
         out.append(f"{i + 1}\n")
         out.append(f"{ts_in} --> {ts_out}\n")
         for line in b.lines:
@@ -475,6 +487,7 @@ if __name__ == "__main__":
     parser.add_argument("-f", "--fromtimecode", default="00:00:00:00")
     parser.add_argument("-t", "--totimecode", default="00:00:00:00")
     parser.add_argument("-df", "--dropframe", action="store_const", const=True)
+    parser.add_argument("-c", "--copytimestamp", action="store_true", default=False)
     parser.add_argument("-D", "--decoder", default="utf-8-sig")
     parser.add_argument("-qr", "--quoteread", nargs="?", const="PROMPT")
     parser.add_argument("-qw", "--quotewrite", nargs="?", const="PROMPT")
@@ -563,7 +576,16 @@ if __name__ == "__main__":
         # Determine framerate
         framerate_messages = []
         overlap_msgs = []
-        if input_file_type == "srt":
+        if args.copytimestamp:
+            if origin_tc != target_tc:
+                print("Error: --copytimestamp is incompatible with timecode alignment")
+                sys.exit(2)
+            framerate = args.framerate or 25
+            drop_frame = args.dropframe or False
+            offset_frames = 0
+            if args.framerate is not None:
+                framerate_messages.append(f"\033[33mWarning: --framerate is ignored when --copytimestamp is active\033[0m")
+        elif input_file_type == "srt":
             detected, ok = detect_framerate(input_lines)
             if args.framerate is not None:
                 framerate = args.framerate
@@ -587,29 +609,30 @@ if __name__ == "__main__":
             else:
                 framerate_messages.append(f"\033[36mUsed framerate: {framerate}fps\033[0m")
 
-        if args.dropframe is None:
-            if framerate in [29.97, 59.94]:
-                while True:
-                    drop_frame_input = (
-                        input("Use drop-frame timecode (y/n, default n)): \n")
-                        .strip()
-                        .lower()
-                        or "n"
-                    )
-                    if drop_frame_input == "y":
-                        drop_frame = True
-                        break
-                    elif drop_frame_input == "n":
-                        drop_frame = False
-                        break
+        if not args.copytimestamp:
+            if args.dropframe is None:
+                if framerate in [29.97, 59.94]:
+                    while True:
+                        drop_frame_input = (
+                            input("Use drop-frame timecode (y/n, default n)): \n")
+                            .strip()
+                            .lower()
+                            or "n"
+                        )
+                        if drop_frame_input == "y":
+                            drop_frame = True
+                            break
+                        elif drop_frame_input == "n":
+                            drop_frame = False
+                            break
+                else:
+                    drop_frame = False
             else:
-                drop_frame = False
-        else:
-            drop_frame = args.dropframe
+                drop_frame = args.dropframe
 
-        offset_frames = timecode_to_frames(target_tc, framerate, drop_frame) - timecode_to_frames(
-            origin_tc, framerate, drop_frame
-        )
+            offset_frames = timecode_to_frames(target_tc, framerate, drop_frame) - timecode_to_frames(
+                origin_tc, framerate, drop_frame
+            )
 
         # Define output file name
         if output_file is not None:
@@ -678,7 +701,7 @@ if __name__ == "__main__":
         elif input_file_type == "pr":
             blocks = read_pr(input_lines)
         elif input_file_type == "srt":
-            blocks = read_srt(input_lines, framerate)
+            blocks = read_srt(input_lines, framerate, args.copytimestamp)
         elif input_file_type == "md":
             blocks = read_md(input_lines)
         else:
@@ -686,6 +709,9 @@ if __name__ == "__main__":
             sys.exit(2)
 
     else:
+        if args.copytimestamp:
+            print("Error: --copytimestamp is incompatible with combine mode")
+            sys.exit(2)
         # Combine mode (2 files)
         file1, file2 = input_files[0], input_files[1]
         file1_ext = os.path.splitext(file1)[1]
@@ -834,6 +860,37 @@ if __name__ == "__main__":
             print("Defined output file extension not supported")
             sys.exit()
 
+    if args.copytimestamp and input_file_type != "srt" and "srt" in output_formats:
+        ts_pattern = re.compile(r"^\d\d:\d\d:\d\d,\d\d\d$")
+        for b in blocks:
+            if not ts_pattern.match(b.timecode_in) or not ts_pattern.match(b.timecode_out):
+                print(
+                    "Error: --copytimestamp specified but output is SRT and input"
+                    " timecode fields do not look like timestamps"
+                )
+                print(
+                    "Found timecode (HH:MM:SS:FF) instead of timestamp (HH:MM:SS,mmm)."
+                )
+                print(
+                    "Remove --copytimestamp to convert timecode to timestamp,"
+                    " or use SRT input"
+                )
+                sys.exit(2)
+
+    if args.copytimestamp and (input_file_type in ("avid", "pr") or "avid" in output_formats or "pr" in output_formats):
+        while True:
+            ans = input("--copytimestamp has no effect on Avid/PR formats (they use timecode, not timestamps). Continue? (y/n, default n): ").strip().lower() or "n"
+            if ans == "y":
+                break
+            elif ans == "n":
+                sys.exit()
+
+    if input_file_type in ("csv", "md") and blocks and is_timestamp(blocks[0].timecode_in):
+        if not args.copytimestamp or "avid" in output_formats or "pr" in output_formats:
+            for b in blocks:
+                b.timecode_in = timestamp_to_timecode(b.timecode_in, framerate)
+                b.timecode_out = timestamp_to_timecode(b.timecode_out, framerate)
+
     ext_map = {"avid": ".txt", "csv": ".csv", "pr": ".txt", "srt": ".srt", "md": ".md"}
 
     for fmt in output_formats:
@@ -853,7 +910,7 @@ if __name__ == "__main__":
                 elif fmt == "pr":
                     output_lines += write_pr(split)
                 elif fmt == "srt":
-                    output_lines += write_srt(split, framerate)
+                    output_lines += write_srt(split, framerate, args.copytimestamp)
                 elif fmt == "md":
                     output_lines += write_md(split)
                 with open(output_file, "w", encoding=decoder) as f:
@@ -874,7 +931,7 @@ if __name__ == "__main__":
             elif fmt == "pr":
                 output_lines += write_pr(blocks)
             elif fmt == "srt":
-                output_lines += write_srt(blocks, framerate)
+                output_lines += write_srt(blocks, framerate, args.copytimestamp)
             elif fmt == "md":
                 output_lines += write_md(blocks)
             with open(output_file, "w", encoding=decoder) as f:

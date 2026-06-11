@@ -12,6 +12,7 @@ Key features:
 - **Drop-frame support** — Timecode in `HH:MM:SS;FF` format for 29.97 and 59.94 fps workflows.
 - **Configurable CSV quoting** — Detect or override the CSV quote character (`\` or `"`) for both reading and writing.
 - **Multiple output formats** — Specify `-of` more than once to produce several output files from a single input.
+- **Timestamp passthrough** — Use `-c` to preserve raw SRT timestamps through CSV/MD roundtrips without converting to frame-based timecode.
 
 ## Usage
 
@@ -40,6 +41,7 @@ Positional arguments (`input_file`, `output_file`) are optional when the equival
 | `-t`, `--totimecode TC` | `00:00:00:00` | Target timecode for alignment. When different from `-f`, the offset is applied to all captions. |
 | `-df`, `--dropframe` | *(auto)* | Force drop-frame timecode. If omitted and framerate is 29.97 or 59.94, prompts interactively. |
 | `-tl`, `--tolerance N` | `0` | Frame tolerance when merging overlapping blocks in combine mode. |
+| `-c`, `--copytimestamp` | *(off)* | Skip timestamp ↔ timecode conversion when reading/writing SRT. Preserves raw `HH:MM:SS,mmm` strings in CSV/MD roundtrips. Incompatible with alignment and combine mode. |
 | `-D`, `--decoder ENC` | `utf-8-sig` | Input file encoding. |
 | `-qr`, `--quoteread CHAR` | auto | CSV quote character for reading. Use bare `-qr` to prompt interactively. |
 | `-qw`, `--quotewrite CHAR` | auto | CSV quote character for writing. Use bare `-qw` to prompt interactively. |
@@ -75,6 +77,17 @@ Splits multi-language data into N separate output files (`_L1`, `_L2`, …, `_LN
 **`-tl` / `--tolerance`**
 
 In combine mode (two input files), this is the number of frames by which overlapping blocks may differ before they are considered separate entries. Larger values merge more aggressively.
+
+**`-c` / `--copytimestamp`**
+
+Skips the `HH:MM:SS,mmm` (SRT timestamp) ↔ `HH:MM:SS:FF` (timecode) conversion normally performed when reading or writing SRT files. With `-c`, timestamp strings pass through as-is. Useful for round-tripping subtitles through CSV or Markdown without losing the original SRT millisecond values.
+
+Format-specific behavior:
+
+- **SRT input/output with `-c`**: raw timestamps are stored and written directly. No framerate needed. `-r` is ignored (a warning is shown).
+- **CSV/MD input with `-c`**: if the file contains timestamps, they are preserved as-is. If it contains timecodes, no conversion happens.
+- **Avid/PR with `-c`**: the user is prompted — `-c` has no effect on these formats since they always use timecode. CSV/MD input containing timestamps destined for avid/pr output is converted to timecode regardless of `-c`.
+- **Incompatibilities**: `-c` cannot be used with timecode alignment (`-f`/`-t`) or combine mode (two input files).
 
 **`-qr` / `--quoteread` and `-qw` / `--quotewrite`**
 
@@ -173,6 +186,17 @@ python subtitle_convert.py subs.srt -of avid -of md -o output
 Override CSV quote character for reading and writing:
 ```
 python subtitle_convert.py subs.csv -qr -qw -o output.srt
+```
+
+Preserve SRT timestamps when converting to CSV:
+```
+python subtitle_convert.py subs.srt output.csv -c
+```
+
+Roundtrip through Markdown without losing millisecond precision:
+```
+python subtitle_convert.py subs.srt table.md -c
+python subtitle_convert.py table.md subs.srt -c
 ```
 
 ### Format notes
