@@ -41,7 +41,7 @@ Positional arguments (`input_file`, `output_file`) are optional when the equival
 | `-t`, `--totimecode TC` | `00:00:00:00` | Target timecode for alignment. When different from `-f`, the offset is applied to all captions. |
 | `-df`, `--dropframe` | *(auto)* | Force drop-frame timecode. If omitted and framerate is 29.97 or 59.94, prompts interactively. |
 | `-tl`, `--tolerance N` | `0` | Frame tolerance when merging overlapping blocks in combine mode. |
-| `-c`, `--copytimestamp` | *(off)* | Skip timestamp ↔ timecode conversion when reading/writing SRT. Preserves raw `HH:MM:SS,mmm` strings in CSV/MD roundtrips. Incompatible with alignment and combine mode. |
+| `-c`, `--copytimestamp` | *(off)* | Skip timestamp ↔ timecode conversion when reading/writing SRT. Preserves raw `HH:MM:SS,mmm` strings in CSV/MD roundtrips. Incompatible with alignment. |
 | `-D`, `--decoder ENC` | `utf-8-sig` | Input file encoding. |
 | `-qr`, `--quoteread CHAR` | auto | CSV quote character for reading. Use bare `-qr` to prompt interactively. |
 | `-qw`, `--quotewrite CHAR` | auto | CSV quote character for writing. Use bare `-qw` to prompt interactively. |
@@ -88,7 +88,7 @@ Format-specific behavior:
 - **CSV/MD input with `-c`**: if the file contains timestamps, they are preserved as-is. If it contains timecodes, no conversion happens.
 - **Avid/PR with `-c`**: the user is prompted — `-c` has no effect on these formats since they always use timecode. CSV/MD input containing timestamps destined for avid/pr output is converted to timecode regardless of `-c`.
 - **Drop-frame timelines**: when SRT files originate from a drop-frame timeline (29.97 or 59.94 fps), use `-c` to avoid precision loss. The frame-to-millisecond math in drop-frame timecode is inherently lossy — converting through timecode and back can shift timestamps by a frame. `-c` preserves the original SRT millisecond values intact.
-- **Incompatibilities**: `-c` cannot be used with timecode alignment (`-f`/`-t`) or combine mode (two input files).
+- **Incompatibilities**: `-c` cannot be used with timecode alignment (`-f`/`-t`).
 
 **`-qr` / `--quoteread` and `-qw` / `--quotewrite`**
 

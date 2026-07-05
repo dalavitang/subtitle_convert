@@ -171,10 +171,16 @@ def pad_blocks(blocks, target_count):
     return blocks
 
 
+def _str_to_frames(s, framerate, drop_frame):
+    if is_timestamp(s):
+        s = timestamp_to_timecode(s, framerate)
+    return timecode_to_frames(s, framerate, drop_frame)
+
+
 def set_frame_numbers(blocks, framerate, drop_frame):
     for b in blocks:
-        b.frame_in = timecode_to_frames(b.timecode_in, framerate, drop_frame)
-        b.frame_out = timecode_to_frames(b.timecode_out, framerate, drop_frame)
+        b.frame_in = _str_to_frames(b.timecode_in, framerate, drop_frame)
+        b.frame_out = _str_to_frames(b.timecode_out, framerate, drop_frame)
 
 
 def merge_blocks(blocks1, blocks2, framerate, drop_frame, tolerance=0):
@@ -709,9 +715,6 @@ if __name__ == "__main__":
             sys.exit(2)
 
     else:
-        if args.copytimestamp:
-            print("Error: --copytimestamp is incompatible with combine mode")
-            sys.exit(2)
         # Combine mode (2 files)
         file1, file2 = input_files[0], input_files[1]
         file1_ext = os.path.splitext(file1)[1]
@@ -805,8 +808,8 @@ if __name__ == "__main__":
             blocks1 = read_pr(lines1)
             blocks2 = read_pr(lines2)
         elif input_file_type == "srt":
-            blocks1 = read_srt(lines1, framerate)
-            blocks2 = read_srt(lines2, framerate)
+            blocks1 = read_srt(lines1, framerate, args.copytimestamp)
+            blocks2 = read_srt(lines2, framerate, args.copytimestamp)
         elif input_file_type == "md":
             blocks1 = read_md(lines1)
             blocks2 = read_md(lines2)
@@ -890,6 +893,11 @@ if __name__ == "__main__":
             for b in blocks:
                 b.timecode_in = timestamp_to_timecode(b.timecode_in, framerate)
                 b.timecode_out = timestamp_to_timecode(b.timecode_out, framerate)
+
+    if input_file_type == "srt" and blocks and is_timestamp(blocks[0].timecode_in) and ("avid" in output_formats or "pr" in output_formats):
+        for b in blocks:
+            b.timecode_in = timestamp_to_timecode(b.timecode_in, framerate)
+            b.timecode_out = timestamp_to_timecode(b.timecode_out, framerate)
 
     ext_map = {"avid": ".txt", "csv": ".csv", "pr": ".txt", "srt": ".srt", "md": ".md"}
 
