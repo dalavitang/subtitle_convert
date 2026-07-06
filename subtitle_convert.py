@@ -924,7 +924,7 @@ if __name__ == "__main__":
                 with open(output_file, "w", encoding=decoder) as f:
                     for line in output_lines:
                         print(line, end="")
-                f.writelines(output_lines)
+                    f.writelines(output_lines)
             print(eof_string)
         else:
             output_file = output_base_name + ext
